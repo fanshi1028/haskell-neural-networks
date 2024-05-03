@@ -1,0 +1,35 @@
+cabal-version:      3.4
+name:               haskell-neural-networks
+version:            0.1.0.0
+
+-- synopsis:
+-- description:
+license:            MIT
+license-file:       LICENSE
+author:             fanshi1028
+maintainer:         jackychany321@gmail.com
+
+-- copyright:
+category:           Web
+build-type:         Simple
+extra-doc-files:    CHANGELOG.md
+extra-source-files: output.css
+
+common warnings
+  ghc-options: -Wall
+
+executable exe
+  import:           warnings
+  main-is:          Main.hs
+  other-modules:
+
+  -- other-extensions:
+  build-depends:
+    base
+
+  -- , beam-core
+  -- , beam-sqlite
+  -- , casing
+  hs-source-dirs:   app
+  default-language: GHC2021
+  ghc-options:      -threaded

@@ -1,0 +1,12 @@
+on:
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  nix-build:
+    uses: fanshi1028/nix-flake-templates/.github/workflows/nix.yml
+    secrets:
+      CACHIX_AUTH_TOKEN: ${{secrets.CACHIX_AUTH_TOKEN}}
+  cabal-build:
+    uses: fanshi1028/nix-flake-templates/.github/workflows/cabal.yml
