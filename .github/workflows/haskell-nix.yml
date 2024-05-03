@@ -1,0 +1,46 @@
+name: Nix CI
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        required: false
+        default: .
+        type: string
+    secrets:
+      CACHIX_AUTH_TOKEN:
+        required: true
+
+jobs:
+  nix-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v24
+      - id: set-matrix
+        name: Generate Nix Matrix
+        run: |
+          set -Eeu
+          matrix="$(nix eval --json '.#githubActions.matrix')"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+        working-directory: ${{ inputs.working-directory }}
+
+  nix-build:
+    needs: nix-matrix
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix: ${{fromJSON(needs.nix-matrix.outputs.matrix)}}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v24
+      - uses: cachix/cachix-action@v13
+        with:
+          name: fanshi1028-personal
+          extraPullNames: nix-community
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - run: |
+          nix build -L ".#${{ matrix.attr }}"
+        working-directory: ${{ inputs.working-directory }}

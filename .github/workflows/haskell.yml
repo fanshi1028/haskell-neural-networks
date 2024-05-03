@@ -1,0 +1,14 @@
+name: Haskell CI
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  cabal:
+    uses: ./.github/workflows/haskell-cabal.yml
+  nix:
+    uses: ./.github/workflows/haskell-nix.yml
+    secrets:
+      CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
