@@ -13,11 +13,11 @@
         pkgs.haskell.packages."ghc${ghcVersion}".override ({
           overrides = hself: hsuper: {
             finite-typelits = hsuper.finite-typelits_0_2_0_0;
-            microlens-th = pkgs.haskell.lib.callHackageDirect {
+            microlens-th = hself.callHackageDirect {
               pkg = "microlens-th";
-              version = "0.4.3.15";
-              sha256 = "00000000";
-            };
+              ver = "0.4.3.15";
+              sha256 = "sha256-coo4jWQVtqNIpIqELEZ1yjQWsKA1LxyJ4yU0uq50dwc=";
+            } { };
           };
         });
     in {
