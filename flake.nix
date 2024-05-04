@@ -32,16 +32,14 @@
         in {
           default = hsPackage.shellFor {
             packages = _: [ self.packages.${system}.default ];
-            nativeBuildInputs = (with hsPackage; [ haskell-language-server ])
-              ++ (with pkgs; [
+            nativeBuildInputs = (with hsPackage;
+              [
                 (haskell-language-server.override {
                   supportedGhcVersions = [ ghcVersion ];
                   supportedFormatters = [ "ormolu" ];
                 })
-                haskellPackages.cabal-fmt
-                cabal-install
-                ghcid
-              ]);
+              ])
+              ++ (with pkgs; [ haskellPackages.cabal-fmt cabal-install ghcid ]);
             withHoogle = true;
           };
         }) nixpkgs.legacyPackages;
