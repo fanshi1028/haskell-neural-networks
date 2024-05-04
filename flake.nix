@@ -22,6 +22,7 @@
                   "5c74496db551c8f1d783036aa8b99a39d89ec60a2925ea466a8bbcd5e68141c6";
               };
             http-conduit = hsuper.http-conduit_2_3_8_3;
+            finite-typelits = hsuper.finite-typelits_0_2_0_0;
           };
         });
     in {
