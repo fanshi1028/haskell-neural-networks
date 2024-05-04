@@ -9,7 +9,12 @@
   outputs = { self, nixpkgs, nix-github-actions }:
     let
       ghcVersion = "98";
-      mkHsPackage = pkgs: pkgs.haskell.packages."ghc${ghcVersion}";
+      mkHsPackage = pkgs:
+        pkgs.haskell.packages."ghc${ghcVersion}".override ({
+          overrides = hself: hsuper: {
+            hourglass = pkgs.haskell.lib.dontCheck hsuper.hourglass;
+          };
+        });
     in {
 
       packages = builtins.mapAttrs (system: pkgs:
@@ -18,7 +23,6 @@
           default = hsPackages.developPackage {
             root = ./.;
             modifier = drv: pkgs.haskell.lib.appendConfigureFlag drv "-O2";
-            # overrides = self: super: { };
           };
         }) nixpkgs.legacyPackages;
 
