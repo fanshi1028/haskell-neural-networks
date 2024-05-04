@@ -13,7 +13,16 @@
         pkgs.haskell.packages."ghc${ghcVersion}".override ({
           overrides = hself: hsuper: {
             hourglass = pkgs.haskell.lib.dontCheck hsuper.hourglass;
+            bsb-http-chunked =
+              pkgs.haskell.lib.dontCheck hsuper.bsb-http-chunked;
+            tasty-hedgehog =
+              pkgs.haskell.lib.overrideCabal hsuper.tasty-hedgehog_1_4_0_2 {
+                revision = "3";
+                editedCabalFile =
+                  "5c74496db551c8f1d783036aa8b99a39d89ec60a2925ea466a8bbcd5e68141c6";
+              };
           };
+          sourceOverrides = { http-conduit = "2.3.8.3"; };
         });
     in {
 
@@ -27,19 +36,19 @@
         }) nixpkgs.legacyPackages;
 
       devShells = builtins.mapAttrs (system: pkgs:
-        with pkgs;
-        let hsPackage = mkHsPackage pkgs;
+        let hsPackage = (mkHsPackage pkgs);
         in {
           default = hsPackage.shellFor {
             packages = _: [ self.packages.${system}.default ];
-            nativeBuildInputs = (with hsPackage;
-              [
-                (haskell-language-server.override {
-                  supportedGhcVersions = [ ghcVersion ];
-                  supportedFormatters = [ "ormolu" ];
-                })
-              ])
-              ++ (with pkgs; [ haskellPackages.cabal-fmt cabal-install ghcid ]);
+            nativeBuildInputs = with pkgs; [
+              (haskell-language-server.override {
+                supportedGhcVersions = [ ghcVersion ];
+                supportedFormatters = [ "ormolu" ];
+              })
+              haskellPackages.cabal-fmt
+              cabal-install
+              ghcid
+            ];
             withHoogle = true;
           };
         }) nixpkgs.legacyPackages;
