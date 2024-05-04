@@ -25,7 +25,9 @@ executable exe
 
   -- other-extensions:
   build-depends:
-    base
+    base,
+    hmatrix
+
 
   -- , beam-core
   -- , beam-sqlite
