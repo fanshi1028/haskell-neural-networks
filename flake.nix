@@ -21,8 +21,8 @@
                 editedCabalFile =
                   "5c74496db551c8f1d783036aa8b99a39d89ec60a2925ea466a8bbcd5e68141c6";
               };
+            http-conduit = hsuper.http-conduit_2_3_8_3;
           };
-          sourceOverrides = { http-conduit = "2.3.8.3"; };
         });
     in {
 
