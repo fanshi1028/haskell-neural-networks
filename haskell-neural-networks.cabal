@@ -29,7 +29,8 @@ executable exe
     hmatrix,
     backprop,
     hmatrix-backprop,
-    massiv
+    massiv,
+    recursion-schemes
 
 
   -- , beam-core
