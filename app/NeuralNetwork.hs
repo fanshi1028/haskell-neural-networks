@@ -6,7 +6,7 @@
 -- | Fully-connected neural network
 module NeuralNetwork
   ( NeuralNetwork,
-    NeuralNetworkConfig(..),
+    NeuralNetworkConfig (..),
     Layer (..),
     Activation (..),
     Mode (..),
@@ -30,19 +30,31 @@ import Data.Functor.Foldable (Recursive (para))
 import Data.List.NonEmpty as NE (NonEmpty ((:|)))
 import Foreign (Storable)
 import Numeric.LinearAlgebra as LA
+    ( Matrix,
+      Transposable(tr'),
+      Linear(scale),
+      cmap,
+      rows,
+      (><),
+      cols,
+      (<>),
+      matrix,
+      sumElements,
+      toColumns,
+      randn )
 
 -- Activation function:
 data Activation = Relu | Sigmoid | Tanh | Id
 
 -- Neural network layer: weights, biases, and activation
-data Layer a = Layer (Matrix a) (Matrix a) Activation
+data Layer a = Layer !(Matrix a) !(Matrix a) !Activation
 
-data NeuralNetworkConfig = NeuralNetworkConfig Int [(Int, Activation)]
+data NeuralNetworkConfig = NeuralNetworkConfig !Int ![(Int, Activation)]
 
 type NeuralNetwork a = [Layer a]
 
 -- | Weight and bias gradients
-data Gradients a = Gradients (Matrix a) (Matrix a)
+data Gradients a = Gradients !(Matrix a) !(Matrix a)
 
 -- | Lookup activation function by a symbol
 getActivation :: Activation -> (Matrix Double -> Matrix Double)
@@ -119,10 +131,10 @@ optimize lr iterN net0 runNet = last $ take iterN (iterate backPropagate net0)
     backPropagate net = zipWith f net . snd $ pass net runNet
 
 data AdamParameters = AdamParameters
-  { _beta1 :: Double,
-    _beta2 :: Double,
-    _epsilon :: Double,
-    _lr :: Double
+  { _beta1 :: !Double,
+    _beta2 :: !Double,
+    _epsilon :: !Double,
+    _lr :: !Double
   }
 
 -- | Adam optimizer parameters
