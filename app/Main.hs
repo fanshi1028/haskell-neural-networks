@@ -20,7 +20,7 @@ import           NeuralNetwork
 
 -- | Circles dataset
 makeCircles
-  :: Int -> Double -> Double -> IO (Matrix Double, Matrix Double)
+  :: Int -> Double -> Double -> IO (RunNet Double)
 makeCircles m factor noise = do
   let rand' n = (scale (2 * pi)) <$> rand n 1
       m1 = m `div` 2
@@ -42,12 +42,12 @@ makeCircles m factor noise = do
       y2 = m2 >< 1 $ repeat 1
       y = y1 === y2
 
-  return (x + ns, y)
+  return $ Train (x + ns) y
 
 -- | Spirals dataset.
 -- Note, produces twice more points than m.
 makeSpirals
-  :: Int -> Double -> IO (Matrix Double, Matrix Double)
+  :: Int -> Double -> IO (RunNet Double)
 makeSpirals m noise = do
   r0 <- (scale (780 * 2*pi / 360). sqrt) <$> rand m 1
   d1x0 <- scale noise <$> rand m 1
@@ -60,13 +60,12 @@ makeSpirals m noise = do
   let y1 = m >< 1 $ repeat 0
   let y2 = m >< 1 $ repeat 1
   let y = y1 === y2
-  return (x, y)
+  return $ Train x y
 
+experiment1 :: IO ()
 experiment1 = do
   trainSet <- makeCircles 200 0.6 0.1
   testSet <- makeCircles 100 0.6 0.1
-
-  let (dta, tgt) = trainSet
 
   (w1_rand, b1_rand) <- genWeights (2, 128)
   (w2_rand, b2_rand) <- genWeights (128, 1)
@@ -93,14 +92,14 @@ experiment1 = do
 
   putStrLn ""
 
+experiment2 :: IO ()
 experiment2 = do
   trainSet <- makeSpirals 200 0.5
   testSet <- makeSpirals 100 0.5
   -- saveMatrix "/tmp/spir.x" "%g" dta
   -- saveMatrix "/tmp/spir.y" "%g" tgt
 
-  let (dta, tgt) = trainSet
-      epochs = 700
+  let epochs = 700
 
   putStrLn $ printf "Spirals problem, Adam, %d epochs" epochs
   putStrLn "---"

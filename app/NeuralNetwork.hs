@@ -6,6 +6,7 @@ module NeuralNetwork
   ( NeuralNetwork,
     Layer (..),
     Activation (..),
+    RunNet(..),
     genWeights,
     genNetwork,
 
@@ -119,14 +120,14 @@ optimize ::
   -- | Neural network
   NeuralNetwork Double ->
   -- | Dataset
-  (Matrix Double, Matrix Double) ->
+  RunNet Double ->
   -- | Updated neural network
   NeuralNetwork Double
-optimize lr iterN net0 (inputs, targets) = last $ take iterN (iterate step net0)
+optimize lr iterN net0 runNet = last $ take iterN (iterate step net0)
   where
     step net = zipWith f net dW
       where
-        (_, dW) = pass net $ Train inputs targets
+        (_, dW) = pass net runNet
 
     f ::
       Layer Double ->
@@ -162,7 +163,7 @@ optimizeAdam ::
   -- | Neural network layers
   NeuralNetwork Double ->
   -- | Dataset
-  (Matrix Double, Matrix Double) ->
+  RunNet Double ->
   NeuralNetwork Double
 optimizeAdam p iterN w0 dataSet = w
   where
@@ -179,7 +180,7 @@ _adam ::
   AdamParameters ->
   Int ->
   ([Layer Double], [(Matrix Double, Matrix Double)], [(Matrix Double, Matrix Double)]) ->
-  (Matrix Double, Matrix Double) ->
+  RunNet Double ->
   ([Layer Double], [(Matrix Double, Matrix Double)], [(Matrix Double, Matrix Double)])
 _adam
   p@AdamParameters
@@ -190,11 +191,11 @@ _adam
     }
   iterN
   (w0, s0, v0)
-  (inputs, targets) = last $ take iterN (iterate step (w0, s0, v0))
+  dataSet = last $ take iterN (iterate step (w0, s0, v0))
     where
       step (w, s, v) = (wN, sN, vN)
         where
-          (_, dW) = pass w $ Train inputs targets
+          (_, dW) = pass w dataSet
 
           sN = zipWith f2 s dW
           vN = zipWith f3 v dW
@@ -265,9 +266,9 @@ accuracy ::
   -- | Neural network
   [Layer Double] ->
   -- | Dataset
-  (Matrix Double, Matrix Double) ->
+  RunNet Double ->
   Double
-accuracy net (dta, tgt) = 100 * (1 - e / m)
+accuracy net (Train dta tgt) = 100 * (1 - e / m)
   where
     pred = net `inferBinary` dta
     e = sumElements $ abs (tgt - pred)
