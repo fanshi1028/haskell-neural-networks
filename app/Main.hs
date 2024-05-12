@@ -21,7 +21,7 @@ import           NeuralNetwork
 
 -- | Circles dataset
 makeCircles
-  :: Int -> Double -> Double -> IO (RunNet "train" Double)
+  :: Int -> Double -> Double -> IO (RunNet TrainMode Double)
 makeCircles m factor noise = do
   let rand' n = (scale (2 * pi)) <$> rand n 1
       m1 = m `div` 2
@@ -48,7 +48,7 @@ makeCircles m factor noise = do
 -- | Spirals dataset.
 -- Note, produces twice more points than m.
 makeSpirals
-  :: Int -> Double -> IO (RunNet "train" Double)
+  :: Int -> Double -> IO (RunNet TrainMode Double)
 makeSpirals m noise = do
   r0 <- (scale (780 * 2*pi / 360). sqrt) <$> rand m 1
   d1x0 <- scale noise <$> rand m 1

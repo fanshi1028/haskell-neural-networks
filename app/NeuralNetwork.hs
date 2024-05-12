@@ -1,12 +1,14 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE MonoLocalBinds #-}
 
 -- | Fully-connected neural network
 module NeuralNetwork
   ( NeuralNetwork,
     Layer (..),
     Activation (..),
+    Mode (..),
     RunNet (..),
     genWeights,
     genNetwork,
@@ -55,13 +57,14 @@ getActivation' Sigmoid (getActivation Sigmoid -> z) = (z * (filledOne z - z) *)
 getActivation' Relu (cmap (\z -> if z >= 0 then 1 else 0) -> z) = (z *)
 getActivation' Tanh (getActivation Tanh -> z) = ((filledOne z - cmap (^ 2) z) *)
 
-data RunNet mode r where
-  Train :: (Matrix r) -> (Matrix r) -> RunNet "train" r
-  Infer :: (Matrix r) -> RunNet "infer" r
+data Mode = TrainMode | InferMode
+
+data RunNet (mode :: Mode) r where
+  Train :: (Matrix r) -> (Matrix r) -> RunNet TrainMode r
+  Infer :: (Matrix r) -> RunNet InferMode r
 
 -- | Both forward and backward neural network passes
 pass ::
-  forall s.
   -- | `NeuralNetwork` `Layer`s: weights and activations
   NeuralNetwork Double ->
   -- | Data set
@@ -118,7 +121,7 @@ optimize ::
   -- | Neural network
   NeuralNetwork Double ->
   -- | Dataset
-  RunNet "train" Double ->
+  RunNet TrainMode Double ->
   -- | Updated neural network
   NeuralNetwork Double
 optimize lr iterN net0 runNet = last $ take iterN (iterate step net0)
@@ -161,7 +164,7 @@ optimizeAdam ::
   -- | Neural network layers
   NeuralNetwork Double ->
   -- | Dataset
-  RunNet "train" Double ->
+  RunNet TrainMode Double ->
   NeuralNetwork Double
 optimizeAdam p iterN w0 dataSet = w
   where
@@ -178,7 +181,7 @@ _adam ::
   AdamParameters ->
   Int ->
   ([Layer Double], [(Matrix Double, Matrix Double)], [(Matrix Double, Matrix Double)]) ->
-  RunNet "train" Double ->
+  RunNet TrainMode Double ->
   ([Layer Double], [(Matrix Double, Matrix Double)], [(Matrix Double, Matrix Double)])
 _adam
   p@AdamParameters
@@ -264,7 +267,7 @@ accuracy ::
   -- | Neural network
   [Layer Double] ->
   -- | Dataset
-  RunNet "train" Double ->
+  RunNet TrainMode Double ->
   Double
 accuracy net (Train dta tgt) = 100 * (1 - e / m)
   where
