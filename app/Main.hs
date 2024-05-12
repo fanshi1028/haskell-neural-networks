@@ -1,6 +1,6 @@
 {-# LANGUAGE DataKinds #-}
 
--- | Circles dataset and gradient descent in a multilayer neural network
+-- \| Circles dataset and gradient descent in a multilayer neural network
 --
 -- 1. Install stack (command line interface is marked by $):
 --   $ wget -qO- https://get.haskellstack.org/ | sh

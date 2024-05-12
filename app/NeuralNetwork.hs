@@ -31,18 +31,19 @@ import Data.List.NonEmpty as NE (NonEmpty ((:|)))
 import Foreign (Storable)
 import GHC.Natural (Natural)
 import Numeric.LinearAlgebra as LA
-    ( Matrix,
-      Transposable(tr'),
-      Linear(scale),
-      cmap,
-      rows,
-      (><),
-      cols,
-      (<>),
-      matrix,
-      sumElements,
-      toColumns,
-      randn )
+  ( Linear (scale),
+    Matrix,
+    Transposable (tr'),
+    cmap,
+    cols,
+    matrix,
+    randn,
+    rows,
+    sumElements,
+    toColumns,
+    (<>),
+    (><),
+  )
 
 -- Activation function:
 data Activation = Relu | Sigmoid | Tanh | Id
