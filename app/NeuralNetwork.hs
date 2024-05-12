@@ -55,13 +55,6 @@ getActivation' Tanh (getActivation Tanh -> z) = ((filledOne z - cmap (^ 2) z) *)
 
 data RunNet r = Train (Matrix r) (Matrix r) | Infer (Matrix r)
 
--- | Forward pass in a neural network:
--- exploit Haskell lazyness to never compute the
--- gradients.
-forward ::
-  NeuralNetwork Double -> Matrix Double -> Matrix Double
-forward net dta = fst $ pass net (Infer dta)
-
 -- | Both forward and backward neural network passes
 pass ::
   -- | `NeuralNetwork` `Layer`s: weights and activations
@@ -242,9 +235,9 @@ _adam
 inferBinary ::
   NeuralNetwork Double -> Matrix Double -> Matrix Double
 inferBinary net dta =
-  let pred = forward net dta
+  let (prediction, _) = pass net $ Infer dta
    in -- Thresholding the NN output
-      cmap (\a -> if a < 0.5 then 0 else 1) pred
+      cmap (\a -> if a < 0.5 then 0 else 1) prediction
 
 -- | Generate random weights and biases
 genWeights :: (Int, Int) -> IO (Matrix Double, Matrix Double)
