@@ -1,7 +1,7 @@
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MonoLocalBinds #-}
+{-# LANGUAGE ViewPatterns #-}
 
 -- | Fully-connected neural network
 module NeuralNetwork
@@ -10,7 +10,6 @@ module NeuralNetwork
     Activation (..),
     Mode (..),
     RunNet (..),
-    genWeights,
     genNetwork,
 
     -- * Training
@@ -25,6 +24,7 @@ module NeuralNetwork
   )
 where
 
+import Data.List.NonEmpty as NE (NonEmpty, tail, toList)
 import Foreign (Storable)
 import Numeric.LinearAlgebra as LA
 
@@ -55,7 +55,7 @@ getActivation' :: Activation -> Matrix Double -> (Matrix Double -> Matrix Double
 getActivation' Id _ = id
 getActivation' Sigmoid (getActivation Sigmoid -> z) = (z * (filledOne z - z) *)
 getActivation' Relu (cmap (\z -> if z >= 0 then 1 else 0) -> z) = (z *)
-getActivation' Tanh (getActivation Tanh -> z) = ((filledOne z - cmap (^ 2) z) *)
+getActivation' Tanh (getActivation Tanh -> z) = ((filledOne z - cmap (^ (2 :: Integer)) z) *)
 
 data Mode = TrainMode | InferMode
 
@@ -92,25 +92,9 @@ pass net run = snd . _pass net $ case run of
             Just dZ -> (Just dX, (prediction', Gradients dW dB : gradients))
               where
                 dY = getActivation' sact lin dZ
-                dW = linearW' inp dY
-                dB = bias' dY
-                dX = linearX' w dY
-
--- | Bias gradient
-bias' :: Matrix Double -> Matrix Double
-bias' dY = cmap (/ m) r
-  where
-    -- Sum elements in each row and return a new matrix
-    r = matrix (cols dY) $ map sumElements (toColumns dY)
-    m = fromIntegral $ rows dY
-
--- | Linear layer weights gradient
-linearW' x dy = cmap (/ m) (tr' x LA.<> dy)
-  where
-    m = fromIntegral $ rows x
-
--- | Linear layer inputs gradient
-linearX' w dy = dy LA.<> tr' w
+                dW = cmap (/ (fromIntegral $ rows inp)) (tr' inp LA.<> dY)
+                dB = cmap (/ (fromIntegral $ rows dY)) $ matrix (cols dY) $ map sumElements (toColumns dY)
+                dX = dY LA.<> tr' w
 
 -- | Gradient descent optimization
 optimize ::
@@ -124,18 +108,10 @@ optimize ::
   RunNet TrainMode Double ->
   -- | Updated neural network
   NeuralNetwork Double
-optimize lr iterN net0 runNet = last $ take iterN (iterate step net0)
+optimize lr iterN net0 runNet = last $ take iterN (iterate backPropagate net0)
   where
-    step net = zipWith f net dW
-      where
-        (_, dW) = pass net runNet
-
-    f ::
-      Layer Double ->
-      Gradients Double ->
-      Layer Double
-    f (Layer w b act) (Gradients dW dB) =
-      Layer (w - lr `scale` dW) (b - lr `scale` dB) act
+    f (Layer w b act) (Gradients dW dB) = Layer (w - lr `scale` dW) (b - lr `scale` dB) act
+    backPropagate net = zipWith f net . snd $ pass net runNet
 
 data AdamParameters = AdamParameters
   { _beta1 :: Double,
@@ -145,6 +121,7 @@ data AdamParameters = AdamParameters
   }
 
 -- | Adam optimizer parameters
+adamParams :: AdamParameters
 adamParams =
   AdamParameters
     { _beta1 = 0.9,
@@ -184,7 +161,7 @@ _adam ::
   RunNet TrainMode Double ->
   ([Layer Double], [(Matrix Double, Matrix Double)], [(Matrix Double, Matrix Double)])
 _adam
-  p@AdamParameters
+  AdamParameters
     { _lr = lr,
       _beta1 = beta1,
       _beta2 = beta2,
@@ -192,14 +169,14 @@ _adam
     }
   iterN
   (w0, s0, v0)
-  dataSet = last $ take iterN (iterate step (w0, s0, v0))
+  dataSet = last $ take iterN (iterate go (w0, s0, v0))
     where
-      step (w, s, v) = (wN, sN, vN)
+      go (w, s, v) = (wN, sN, vN)
         where
-          (_, dW) = pass w dataSet
+          (_, gradients) = pass w dataSet
 
-          sN = zipWith f2 s dW
-          vN = zipWith f3 v dW
+          sN = zipWith f2 s gradients
+          vN = zipWith f3 v gradients
           wN = zipWith3 f w vN sN
 
           f ::
@@ -220,8 +197,8 @@ _adam
             Gradients Double ->
             (Matrix Double, Matrix Double)
           f2 (sW, sB) (Gradients dW dB) =
-            ( beta2 `scale` sW + (1 - beta2) `scale` (dW ^ 2),
-              beta2 `scale` sB + (1 - beta2) `scale` (dB ^ 2)
+            ( beta2 `scale` sW + (1 - beta2) `scale` (dW ^ (2 :: Integer)),
+              beta2 `scale` sB + (1 - beta2) `scale` (dB ^ (2 :: Integer))
             )
 
           f3 ::
@@ -236,10 +213,7 @@ _adam
 -- | Perform a binary classification
 inferBinary ::
   NeuralNetwork Double -> Matrix Double -> Matrix Double
-inferBinary net dta =
-  let (prediction, _) = pass net $ Infer dta
-   in -- Thresholding the NN output
-      cmap (\a -> if a < 0.5 then 0 else 1) prediction
+inferBinary net dta = cmap (\a -> if a < 0.5 then 0 else 1) . fst . pass net $ Infer dta
 
 -- | Generate random weights and biases
 genWeights :: (Int, Int) -> IO (Matrix Double, Matrix Double)
@@ -248,19 +222,17 @@ genWeights (nin, nout) = do
   b <- _genWeights (1, nout)
   return (w, b)
   where
-    _genWeights (nin, nout) = do
-      let k = sqrt (1.0 / fromIntegral nin)
-      w <- randn nin nout
+    _genWeights (nin', nout') = do
+      let k = sqrt (1.0 / fromIntegral nin')
+      w <- randn nin' nout'
       return (k `scale` w)
 
 -- | Generate a neural network with random weights
 genNetwork ::
-  [Int] -> [Activation] -> IO (NeuralNetwork Double)
-genNetwork nodes activations = do
-  weights <- mapM genWeights nodes'
-  return (zipWith (\(w, b) a -> Layer w b a) weights activations)
-  where
-    nodes' = zip nodes (tail nodes)
+  NonEmpty Int -> [Activation] -> IO (NeuralNetwork Double)
+genNetwork nodes activations =
+  zipWith (\a (w, b) -> Layer w b a) activations
+    <$> traverse genWeights (zip (NE.toList nodes) (NE.tail nodes))
 
 -- | Binary classification accuracy in percent
 accuracy ::
@@ -271,6 +243,5 @@ accuracy ::
   Double
 accuracy net (Train dta tgt) = 100 * (1 - e / m)
   where
-    pred = net `inferBinary` dta
-    e = sumElements $ abs (tgt - pred)
+    e = sumElements $ abs (tgt - net `inferBinary` dta)
     m = fromIntegral $ rows tgt

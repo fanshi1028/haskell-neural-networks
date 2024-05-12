@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds #-}
+
 -- | Circles dataset and gradient descent in a multilayer neural network
 --
 -- 1. Install stack (command line interface is marked by $):
@@ -13,15 +14,14 @@
 --   $ stack --resolver lts-10.6 --install-ghc ghc --package hmatrix-0.18.2.0 --package hmatrix-morpheus-0.1.1.2 -- -O2 Main.hs
 --   $ ./Main
 
-import           Numeric.LinearAlgebra
-import           Text.Printf ( printf )
-
-import           NeuralNetwork
-
+import Data.List.NonEmpty (NonEmpty ((:|)))
+import NeuralNetwork
+import Numeric.LinearAlgebra
+import Text.Printf (printf)
 
 -- | Circles dataset
-makeCircles
-  :: Int -> Double -> Double -> IO (RunNet TrainMode Double)
+makeCircles ::
+  Int -> Double -> Double -> IO (RunNet TrainMode Double)
 makeCircles m factor noise = do
   let rand' n = (scale (2 * pi)) <$> rand n 1
       m1 = m `div` 2
@@ -47,15 +47,15 @@ makeCircles m factor noise = do
 
 -- | Spirals dataset.
 -- Note, produces twice more points than m.
-makeSpirals
-  :: Int -> Double -> IO (RunNet TrainMode Double)
+makeSpirals ::
+  Int -> Double -> IO (RunNet TrainMode Double)
 makeSpirals m noise = do
-  r0 <- (scale (780 * 2*pi / 360). sqrt) <$> rand m 1
+  r0 <- (scale (780 * 2 * pi / 360) . sqrt) <$> rand m 1
   d1x0 <- scale noise <$> rand m 1
   d1y0 <- scale noise <$> rand m 1
 
-  let d1x = d1x0 - cos(r0) * r0
-  let d1y = d1y0 + sin(r0) * r0
+  let d1x = d1x0 - cos (r0) * r0
+  let d1y = d1y0 + sin (r0) * r0
 
   let x = (fromBlocks [[d1x, d1y], [-d1x, -d1y]]) / 10.0
   let y1 = m >< 1 $ repeat 0
@@ -68,17 +68,10 @@ experiment1 = do
   trainSet <- makeCircles 200 0.6 0.1
   testSet <- makeCircles 100 0.6 0.1
 
-  (w1_rand, b1_rand) <- genWeights (2, 128)
-  (w2_rand, b2_rand) <- genWeights (128, 1)
-
-  let net = [ Layer w1_rand b1_rand Relu
-            , Layer w2_rand b2_rand Id ]
-
-  -- -- Alternatively:
-  -- net0 <- genNetwork [2, 128, 1] [Relu, Id]
+  net <- genNetwork (2 :| [128, 1]) [Relu, Id]
 
   let epochs = 1000
-      lr = 0.001  -- Learning rate
+      lr = 0.001 -- Learning rate
       net' = optimize lr epochs net trainSet
       netA = optimizeAdam adamParams epochs net trainSet
 
@@ -105,21 +98,21 @@ experiment2 = do
   putStrLn $ printf "Spirals problem, Adam, %d epochs" epochs
   putStrLn "---"
   putStrLn "1 hidden layer, 128 neurons (513 parameters)"
-  net0 <- genNetwork [2, 128, 1] [Relu, Id]
+  net0 <- genNetwork (2 :| [128, 1]) [Relu, Id]
   let net0' = optimizeAdam adamParams epochs net0 trainSet
 
   putStrLn $ printf "Training accuracy %.1f" (net0' `accuracy` trainSet)
   putStrLn $ printf "Validation accuracy %.1f\n" (net0' `accuracy` testSet)
 
   putStrLn "1 hidden layer, 512 neurons (2049 parameters)"
-  net1 <- genNetwork [2, 512, 1] [Relu, Id]
+  net1 <- genNetwork (2 :| [512, 1]) [Relu, Id]
   let net1' = optimizeAdam adamParams epochs net1 trainSet
 
   putStrLn $ printf "Training accuracy %.1f" (net1' `accuracy` trainSet)
   putStrLn $ printf "Validation accuracy %.1f\n" (net1' `accuracy` testSet)
 
   putStrLn "3 hidden layers, 40, 25, and 10 neurons (1416 parameters)"
-  net2 <- genNetwork [2, 40, 25, 10, 1] [Relu, Relu, Relu, Id]
+  net2 <- genNetwork (2 :| [40, 25, 10, 1]) [Relu, Relu, Relu, Id]
   let net2' = optimizeAdam adamParams epochs net2 trainSet
 
   putStrLn $ printf "Training accuracy %.1f" (net2' `accuracy` trainSet)
