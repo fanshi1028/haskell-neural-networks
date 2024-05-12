@@ -27,7 +27,7 @@ jobs:
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
         working-directory: ${{ inputs.working-directory }}
 
-  nix-build:
+  nix-run:
     needs: nix-matrix
     runs-on: ${{ matrix.os }}
     strategy:
