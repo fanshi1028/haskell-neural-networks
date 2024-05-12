@@ -21,7 +21,7 @@ common warnings
 executable exe
   import:           warnings
   main-is:          Main.hs
-  other-modules:
+  other-modules: NeuralNetwork
 
   -- other-extensions:
   build-depends:
