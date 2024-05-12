@@ -21,8 +21,8 @@ module NeuralNetwork
   )
 where
 
-import Numeric.LinearAlgebra as LA
 import Foreign (Storable)
+import Numeric.LinearAlgebra as LA
 
 -- Activation function:
 data Activation = Relu | Sigmoid | Tanh | Id
@@ -53,42 +53,53 @@ getActivation' Sigmoid (getActivation Sigmoid -> z) = (z * (filledOne z - z) *)
 getActivation' Relu (cmap (\z -> if z >= 0 then 1 else 0) -> z) = (z *)
 getActivation' Tanh (getActivation Tanh -> z) = ((filledOne z - cmap (^ 2) z) *)
 
+data RunNet r = Train (Matrix r) (Matrix r) | Infer (Matrix r)
+
 -- | Forward pass in a neural network:
 -- exploit Haskell lazyness to never compute the
 -- gradients.
 forward ::
   NeuralNetwork Double -> Matrix Double -> Matrix Double
-forward net dta = fst $ pass net (dta, undefined)
+forward net dta = fst $ pass net (Infer dta)
 
 -- | Both forward and backward neural network passes
 pass ::
   -- | `NeuralNetwork` `Layer`s: weights and activations
   NeuralNetwork Double ->
   -- | Data set
-  (Matrix Double, Matrix Double) ->
+  RunNet Double ->
   -- | NN computation from forward pass and weights gradients
   (Matrix Double, [Gradients Double])
-pass net (x, tgt) = (pred, grads)
+pass net run = (prediction, grads)
   where
-    (_, pred, grads) = _pass x net
+    (_, prediction, grads) =
+      _pass
+        ( case run of
+            Train x _ -> x
+            Infer x -> x
+        )
+        net
 
-    _pass inp [] = (loss', pred, [])
-      where
-        pred = getActivation Sigmoid inp
-        -- Gradient of cross-entropy loss
-        -- after sigmoid activation.
-        loss' = pred - tgt
-    _pass inp (Layer w b sact : layers) = (dX, pred, Gradients dW dB : t)
-      where
-        lin = (inp LA.<> w) + b
-        y = getActivation sact lin
-
-        (dZ, pred, t) = _pass y layers
-
-        dY = getActivation' sact lin dZ
-        dW = linearW' inp dY
-        dB = bias' dY
-        dX = linearX' w dY
+    _pass inp [] =
+      let prediction' = getActivation Sigmoid inp
+          -- Gradient of cross-entropy loss
+          -- after sigmoid activation.
+          mLoss = case run of
+            Train _ target -> Just $ prediction' - target
+            Infer _ -> Nothing
+       in (mLoss, prediction', [])
+    _pass inp (Layer w b sact : layers) =
+      let lin = (inp LA.<> w) + b
+          y = getActivation sact lin
+          (mDZ, prediction', gradients) = _pass y layers
+       in case mDZ of
+            Nothing -> (Nothing, prediction', [])
+            Just dZ -> (Just dX, prediction', Gradients dW dB : gradients)
+              where
+                dY = getActivation' sact lin dZ
+                dW = linearW' inp dY
+                dB = bias' dY
+                dX = linearX' w dY
 
 -- | Bias gradient
 bias' :: Matrix Double -> Matrix Double
@@ -118,11 +129,11 @@ optimize ::
   (Matrix Double, Matrix Double) ->
   -- | Updated neural network
   NeuralNetwork Double
-optimize lr iterN net0 dataSet = last $ take iterN (iterate step net0)
+optimize lr iterN net0 (inputs, targets) = last $ take iterN (iterate step net0)
   where
     step net = zipWith f net dW
       where
-        (_, dW) = pass net dataSet
+        (_, dW) = pass net $ Train inputs targets
 
     f ::
       Layer Double ->
@@ -186,11 +197,11 @@ _adam
     }
   iterN
   (w0, s0, v0)
-  dataSet = last $ take iterN (iterate step (w0, s0, v0))
+  (inputs, targets) = last $ take iterN (iterate step (w0, s0, v0))
     where
       step (w, s, v) = (wN, sN, vN)
         where
-          (_, dW) = pass w dataSet
+          (_, dW) = pass w $ Train inputs targets
 
           sN = zipWith f2 s dW
           vN = zipWith f3 v dW
