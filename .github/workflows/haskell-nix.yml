@@ -47,7 +47,7 @@ jobs:
           nix run -L --accept-flake-config ".#${{ matrix.attr }}"
         working-directory: ${{ inputs.working-directory }}
       - name: nix-build
-        if: ${{ contains(matrix.attr, 'shell') }}
+        if: ${{ contains(matrix.attr, 'shell') && !contains(matrix.attr, 'linux') }}
         run: |
           nix build -L --accept-flake-config ".#${{ matrix.attr }}"
         working-directory: ${{ inputs.working-directory }}
