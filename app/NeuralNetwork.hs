@@ -6,7 +6,7 @@ module NeuralNetwork
   ( NeuralNetwork,
     Layer (..),
     Activation (..),
-    RunNet(..),
+    RunNet (..),
     genWeights,
     genNetwork,
 
@@ -64,31 +64,25 @@ pass ::
   RunNet Double ->
   -- | NN computation from forward pass and weights gradients
   (Matrix Double, [Gradients Double])
-pass net run = (prediction, grads)
+pass net run = snd . _pass net $ case run of
+  Train x _ -> x
+  Infer x -> x
   where
-    (_, prediction, grads) =
-      _pass
-        ( case run of
-            Train x _ -> x
-            Infer x -> x
-        )
-        net
-
-    _pass inp [] =
+    _pass [] inp =
       let prediction' = getActivation Sigmoid inp
           -- Gradient of cross-entropy loss
           -- after sigmoid activation.
           mLoss = case run of
             Train _ target -> Just $ prediction' - target
             Infer _ -> Nothing
-       in (mLoss, prediction', [])
-    _pass inp (Layer w b sact : layers) =
+       in (mLoss, (prediction', []))
+    _pass (Layer w b sact : layers) inp =
       let lin = (inp LA.<> w) + b
           y = getActivation sact lin
-          (mDZ, prediction', gradients) = _pass y layers
+          (mDZ, (prediction', gradients)) = _pass layers y
        in case mDZ of
-            Nothing -> (Nothing, prediction', [])
-            Just dZ -> (Just dX, prediction', Gradients dW dB : gradients)
+            Nothing -> (Nothing, (prediction', []))
+            Just dZ -> (Just dX, (prediction', Gradients dW dB : gradients))
               where
                 dY = getActivation' sact lin dZ
                 dW = linearW' inp dY

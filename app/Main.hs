@@ -124,4 +124,5 @@ experiment2 = do
   putStrLn $ printf "Training accuracy %.1f" (net2' `accuracy` trainSet)
   putStrLn $ printf "Validation accuracy %.1f\n" (net2' `accuracy` testSet)
 
+main :: IO ()
 main = experiment1 >> experiment2
