@@ -42,5 +42,5 @@ jobs:
           extraPullNames: nix-community
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - run: |
-          nix build -L --accept-flake-config ".#${{ matrix.attr }}"
+          nix run -L --accept-flake-config ".#${{ matrix.attr }}"
         working-directory: ${{ inputs.working-directory }}
