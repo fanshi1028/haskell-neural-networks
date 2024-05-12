@@ -6,6 +6,7 @@
 -- | Fully-connected neural network
 module NeuralNetwork
   ( NeuralNetwork,
+    NeuralNetworkConfig(..),
     Layer (..),
     Activation (..),
     Mode (..),
@@ -24,7 +25,9 @@ module NeuralNetwork
   )
 where
 
-import Data.List.NonEmpty as NE (NonEmpty, tail, toList)
+import Data.Functor.Base (NonEmptyF (NonEmptyF))
+import Data.Functor.Foldable (Recursive (para))
+import Data.List.NonEmpty as NE (NonEmpty ((:|)))
 import Foreign (Storable)
 import Numeric.LinearAlgebra as LA
 
@@ -33,6 +36,8 @@ data Activation = Relu | Sigmoid | Tanh | Id
 
 -- Neural network layer: weights, biases, and activation
 data Layer a = Layer (Matrix a) (Matrix a) Activation
+
+data NeuralNetworkConfig = NeuralNetworkConfig Int [(Int, Activation)]
 
 type NeuralNetwork a = [Layer a]
 
@@ -228,11 +233,14 @@ genWeights (nin, nout) = do
       return (k `scale` w)
 
 -- | Generate a neural network with random weights
-genNetwork ::
-  NonEmpty Int -> [Activation] -> IO (NeuralNetwork Double)
-genNetwork nodes activations =
-  zipWith (\a (w, b) -> Layer w b a) activations
-    <$> traverse genWeights (zip (NE.toList nodes) (NE.tail nodes))
+genNetwork :: NeuralNetworkConfig -> IO (NeuralNetwork Double)
+genNetwork (NeuralNetworkConfig nStart l) = flip para ((nStart, undefined) :| l) $ \case
+  NonEmptyF (nIn, _) mr -> case mr of
+    Nothing -> pure []
+    Just ((nOut, activation) :| _, mLayers) -> do
+      layers <- mLayers
+      (w, b) <- genWeights (nIn, nOut)
+      pure $ Layer w b activation : layers
 
 -- | Binary classification accuracy in percent
 accuracy ::

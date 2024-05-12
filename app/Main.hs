@@ -14,7 +14,6 @@
 --   $ stack --resolver lts-10.6 --install-ghc ghc --package hmatrix-0.18.2.0 --package hmatrix-morpheus-0.1.1.2 -- -O2 Main.hs
 --   $ ./Main
 
-import Data.List.NonEmpty (NonEmpty ((:|)))
 import NeuralNetwork
 import Numeric.LinearAlgebra
 import Text.Printf (printf)
@@ -68,7 +67,7 @@ experiment1 = do
   trainSet <- makeCircles 200 0.6 0.1
   testSet <- makeCircles 100 0.6 0.1
 
-  net <- genNetwork (2 :| [128, 1]) [Relu, Id]
+  net <- genNetwork $ NeuralNetworkConfig 2 [(128, Relu), (1, Id)]
 
   let epochs = 1000
       lr = 0.001 -- Learning rate
@@ -98,21 +97,21 @@ experiment2 = do
   putStrLn $ printf "Spirals problem, Adam, %d epochs" epochs
   putStrLn "---"
   putStrLn "1 hidden layer, 128 neurons (513 parameters)"
-  net0 <- genNetwork (2 :| [128, 1]) [Relu, Id]
+  net0 <- genNetwork $ NeuralNetworkConfig 2 [(128, Relu), (1, Id)]
   let net0' = optimizeAdam adamParams epochs net0 trainSet
 
   putStrLn $ printf "Training accuracy %.1f" (net0' `accuracy` trainSet)
   putStrLn $ printf "Validation accuracy %.1f\n" (net0' `accuracy` testSet)
 
   putStrLn "1 hidden layer, 512 neurons (2049 parameters)"
-  net1 <- genNetwork (2 :| [512, 1]) [Relu, Id]
+  net1 <- genNetwork $ NeuralNetworkConfig 2 [(512, Relu), (1, Id)]
   let net1' = optimizeAdam adamParams epochs net1 trainSet
 
   putStrLn $ printf "Training accuracy %.1f" (net1' `accuracy` trainSet)
   putStrLn $ printf "Validation accuracy %.1f\n" (net1' `accuracy` testSet)
 
   putStrLn "3 hidden layers, 40, 25, and 10 neurons (1416 parameters)"
-  net2 <- genNetwork (2 :| [40, 25, 10, 1]) [Relu, Relu, Relu, Id]
+  net2 <- genNetwork $ NeuralNetworkConfig 2 [(40, Relu), (25, Relu), (10, Relu), (1, Id)]
   let net2' = optimizeAdam adamParams epochs net2 trainSet
 
   putStrLn $ printf "Training accuracy %.1f" (net2' `accuracy` trainSet)
