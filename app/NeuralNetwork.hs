@@ -26,9 +26,10 @@ module NeuralNetwork
 where
 
 import Data.Functor.Base (NonEmptyF (NonEmptyF))
-import Data.Functor.Foldable (Recursive (para))
+import Data.Functor.Foldable (Recursive (cata, para))
 import Data.List.NonEmpty as NE (NonEmpty ((:|)))
 import Foreign (Storable)
+import GHC.Natural (Natural)
 import Numeric.LinearAlgebra as LA
     ( Matrix,
       Transposable(tr'),
@@ -118,17 +119,18 @@ optimize ::
   -- | Learning rate
   Double ->
   -- | No of iterations
-  Int ->
+  Natural ->
   -- | Neural network
   NeuralNetwork Double ->
   -- | Dataset
   RunNet TrainMode Double ->
   -- | Updated neural network
   NeuralNetwork Double
-optimize lr iterN net0 runNet = last $ take iterN (iterate backPropagate net0)
-  where
-    f (Layer w b act) (Gradients dW dB) = Layer (w - lr `scale` dW) (b - lr `scale` dB) act
-    backPropagate net = zipWith f net . snd $ pass net runNet
+optimize lr iterN net runNet = flip cata iterN $ \case
+  Nothing -> net
+  Just net' -> zipWith f net . snd $ pass net' runNet
+    where
+      f (Layer w b act) (Gradients dW dB) = Layer (w - lr `scale` dW) (b - lr `scale` dB) act
 
 data AdamParameters = AdamParameters
   { _beta1 :: !Double,
@@ -154,7 +156,7 @@ optimizeAdam ::
   -- | Adam parameters
   AdamParameters ->
   -- | No of iterations
-  Int ->
+  Natural ->
   -- | Neural network layers
   NeuralNetwork Double ->
   -- | Dataset
@@ -173,7 +175,7 @@ optimizeAdam p iterN w0 dataSet = w
 
 _adam ::
   AdamParameters ->
-  Int ->
+  Natural ->
   ([Layer Double], [(Matrix Double, Matrix Double)], [(Matrix Double, Matrix Double)]) ->
   RunNet TrainMode Double ->
   ([Layer Double], [(Matrix Double, Matrix Double)], [(Matrix Double, Matrix Double)])
@@ -186,46 +188,48 @@ _adam
     }
   iterN
   (w0, s0, v0)
-  dataSet = last $ take iterN (iterate go (w0, s0, v0))
-    where
-      go (w, s, v) = (wN, sN, vN)
-        where
-          (_, gradients) = pass w dataSet
+  dataSet = flip cata iterN $ \case
+    Nothing -> (w0, s0, v0)
+    Just r -> go r
+      where
+        go (w, s, v) = (wN, sN, vN)
+          where
+            (_, gradients) = pass w dataSet
 
-          sN = zipWith f2 s gradients
-          vN = zipWith f3 v gradients
-          wN = zipWith3 f w vN sN
+            sN = zipWith f2 s gradients
+            vN = zipWith f3 v gradients
+            wN = zipWith3 f w vN sN
 
-          f ::
-            Layer Double ->
-            (Matrix Double, Matrix Double) ->
-            (Matrix Double, Matrix Double) ->
-            Layer Double
-          f (Layer w_ b_ sf) (vW, vB) (sW, sB) =
-            Layer
-              (w_ - lr `scale` vW / ((sqrt sW) `addC` epsilon))
-              (b_ - lr `scale` vB / ((sqrt sB) `addC` epsilon))
-              sf
+            f ::
+              Layer Double ->
+              (Matrix Double, Matrix Double) ->
+              (Matrix Double, Matrix Double) ->
+              Layer Double
+            f (Layer w_ b_ sf) (vW, vB) (sW, sB) =
+              Layer
+                (w_ - lr `scale` vW / ((sqrt sW) `addC` epsilon))
+                (b_ - lr `scale` vB / ((sqrt sB) `addC` epsilon))
+                sf
 
-          addC m c = cmap (+ c) m
+            addC m c = cmap (+ c) m
 
-          f2 ::
-            (Matrix Double, Matrix Double) ->
-            Gradients Double ->
-            (Matrix Double, Matrix Double)
-          f2 (sW, sB) (Gradients dW dB) =
-            ( beta2 `scale` sW + (1 - beta2) `scale` (dW ^ (2 :: Integer)),
-              beta2 `scale` sB + (1 - beta2) `scale` (dB ^ (2 :: Integer))
-            )
+            f2 ::
+              (Matrix Double, Matrix Double) ->
+              Gradients Double ->
+              (Matrix Double, Matrix Double)
+            f2 (sW, sB) (Gradients dW dB) =
+              ( beta2 `scale` sW + (1 - beta2) `scale` (dW ^ (2 :: Integer)),
+                beta2 `scale` sB + (1 - beta2) `scale` (dB ^ (2 :: Integer))
+              )
 
-          f3 ::
-            (Matrix Double, Matrix Double) ->
-            Gradients Double ->
-            (Matrix Double, Matrix Double)
-          f3 (vW, vB) (Gradients dW dB) =
-            ( beta1 `scale` vW + (1 - beta1) `scale` dW,
-              beta1 `scale` vB + (1 - beta1) `scale` dB
-            )
+            f3 ::
+              (Matrix Double, Matrix Double) ->
+              Gradients Double ->
+              (Matrix Double, Matrix Double)
+            f3 (vW, vB) (Gradients dW dB) =
+              ( beta1 `scale` vW + (1 - beta1) `scale` dW,
+                beta1 `scale` vB + (1 - beta1) `scale` dB
+              )
 
 -- | Perform a binary classification
 inferBinary ::
