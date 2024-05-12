@@ -42,7 +42,7 @@ jobs:
           extraPullNames: nix-community
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: nix-run
-        if: ${{!contains(matrix.attr, "shell")}}
+        if: ${{!contains(matrix.attr, 'shell')}}
         run: |
           nix run -L --accept-flake-config ".#${{ matrix.attr }}"
         working-directory: ${{ inputs.working-directory }}
