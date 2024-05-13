@@ -232,23 +232,6 @@ _adam
                 beta1 `scale` vB + (1 - beta1) `scale` dB
               )
 
--- | Perform a binary classification
-inferBinary ::
-  NeuralNetwork Double -> Matrix Double -> Matrix Double
-inferBinary net dta = cmap (\a -> if a < 0.5 then 0 else 1) . fst . pass net $ Infer dta
-
--- | Generate random weights and biases
-genWeights :: (Int, Int) -> IO (Matrix Double, Matrix Double)
-genWeights (nin, nout) = do
-  w <- _genWeights (nin, nout)
-  b <- _genWeights (1, nout)
-  return (w, b)
-  where
-    _genWeights (nin', nout') = do
-      let k = sqrt (1.0 / fromIntegral nin')
-      w <- randn nin' nout'
-      return (k `scale` w)
-
 -- | Generate a neural network with random weights
 genNetwork :: NeuralNetworkConfig -> IO (NeuralNetwork Double)
 genNetwork (NeuralNetworkConfig nStart l) = flip para ((nStart, undefined) :| l) $ \case
@@ -256,8 +239,16 @@ genNetwork (NeuralNetworkConfig nStart l) = flip para ((nStart, undefined) :| l)
     Nothing -> pure []
     Just ((nOut, activation) :| _, mLayers) -> do
       layers <- mLayers
-      (w, b) <- genWeights (nIn, nOut)
+      w <- genWeights nIn
+      b <- genWeights 1
       pure $ Layer w b activation : layers
+      where
+        genWeights nRow = scale (sqrt $ 1.0 / fromIntegral nRow) <$> randn nRow nOut
+
+-- | Perform a binary classification
+inferBinary ::
+  NeuralNetwork Double -> Matrix Double -> Matrix Double
+inferBinary net dta = cmap (\a -> if a < 0.5 then 0 else 1) . fst . pass net $ Infer dta
 
 -- | Binary classification accuracy in percent
 accuracy ::
