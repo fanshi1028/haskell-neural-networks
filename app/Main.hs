@@ -15,7 +15,17 @@
 --   $ ./Main
 
 import NeuralNetwork
-import Numeric.LinearAlgebra
+  ( Activation (Id, Relu),
+    Mode (TrainMode),
+    NeuralNetworkConfig (NeuralNetworkConfig),
+    RunNet (Train),
+    accuracy,
+    adamParams,
+    genNetwork,
+    optimize,
+    optimizeAdam,
+  )
+import Numeric.LinearAlgebra (Linear (scale), fromBlocks, rand, randn, (===), (><))
 import Text.Printf (printf)
 
 -- | Circles dataset
