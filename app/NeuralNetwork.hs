@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MonoLocalBinds #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ViewPatterns #-}
 
 -- | Fully-connected neural network
@@ -22,6 +23,7 @@ module NeuralNetwork
     -- * Inference
     inferBinary,
     accuracy,
+    genWeights,
   )
 where
 
@@ -30,6 +32,7 @@ import Data.Functor.Foldable (Recursive (cata, para))
 import Data.List.NonEmpty as NE (NonEmpty ((:|)))
 import Foreign (Storable)
 import GHC.Natural (Natural)
+import GHC.TypeLits (KnownNat (natSing), SNat, fromSNat)
 import Numeric.LinearAlgebra as LA
   ( Linear (scale),
     Matrix,
@@ -42,8 +45,9 @@ import Numeric.LinearAlgebra as LA
     sumElements,
     toColumns,
     (<>),
-    (><),
   )
+import Numeric.LinearAlgebra.Static (R)
+import Numeric.LinearAlgebra.Static qualified as LS (Domain (dmmap), L, randn)
 
 -- Activation function:
 data Activation = Relu | Sigmoid | Tanh | Id
@@ -232,6 +236,9 @@ _adam
                 beta1 `scale` vB + (1 - beta1) `scale` dB
               )
 
+genWeights :: forall m n. (KnownNat m, KnownNat n) => IO (LS.L m n)
+genWeights = LS.dmmap (* sqrt (1.0 / (fromIntegral . fromSNat $ natSing @m))) <$> LS.randn
+
 -- | Generate a neural network with random weights
 genNetwork :: NeuralNetworkConfig -> IO (NeuralNetwork Double)
 genNetwork (NeuralNetworkConfig nStart l) = flip para ((nStart, undefined) :| l) $ \case
@@ -239,11 +246,10 @@ genNetwork (NeuralNetworkConfig nStart l) = flip para ((nStart, undefined) :| l)
     Nothing -> pure []
     Just ((nOut, activation) :| _, mLayers) -> do
       layers <- mLayers
-      w <- genWeights nIn
-      b <- genWeights 1
+      let genWeights' nIn' = scale (sqrt $ 1.0 / fromIntegral nIn') <$> randn nIn' nOut
+      w <- genWeights' nIn
+      b <- genWeights' 1
       pure $ Layer w b activation : layers
-      where
-        genWeights nRow = scale (sqrt $ 1.0 / fromIntegral nRow) <$> randn nRow nOut
 
 -- | Perform a binary classification
 inferBinary ::
