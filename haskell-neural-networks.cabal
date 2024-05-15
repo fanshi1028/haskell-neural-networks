@@ -31,7 +31,8 @@ executable exe
     hmatrix-backprop,
     massiv,
     recursion-schemes,
-    simple-reflect
+    simple-reflect,
+    random
 
 
   -- , beam-core
