@@ -32,7 +32,7 @@ import Data.Functor.Foldable (Recursive (cata, para))
 import Data.List.NonEmpty as NE (NonEmpty ((:|)))
 import Foreign (Storable)
 import GHC.Natural (Natural)
-import GHC.TypeLits (KnownNat (natSing), SNat, fromSNat)
+import GHC.TypeLits (KnownNat (natSing), fromSNat)
 import Numeric.LinearAlgebra as LA
   ( Linear (scale),
     Matrix,
@@ -44,9 +44,8 @@ import Numeric.LinearAlgebra as LA
     rows,
     sumElements,
     toColumns,
-    (<>),
+    (<>), (><),
   )
-import Numeric.LinearAlgebra.Static (R)
 import Numeric.LinearAlgebra.Static qualified as LS (Domain (dmmap), L, randn)
 
 -- Activation function:
