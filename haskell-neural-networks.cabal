@@ -32,7 +32,8 @@ executable exe
     massiv,
     recursion-schemes,
     simple-reflect,
-    random
+    random,
+    lens
 
 
   -- , beam-core
