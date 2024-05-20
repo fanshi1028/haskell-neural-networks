@@ -33,7 +33,8 @@ executable exe
     recursion-schemes,
     simple-reflect,
     random,
-    lens
+    lens,
+    streamly
 
 
   -- , beam-core
