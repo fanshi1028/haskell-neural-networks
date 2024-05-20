@@ -97,9 +97,8 @@ pass net run = snd . _pass net $ case run of
   Train x _ -> x
   Infer x -> x
   where
-    _pass [] inp =
-      let prediction' = getActivation Sigmoid inp
-          -- Gradient of cross-entropy loss
+    _pass [] prediction' =
+      let -- Gradient of cross-entropy loss
           -- after sigmoid activation.
           mLoss = case run of
             Train _ target -> Just $ prediction' - target

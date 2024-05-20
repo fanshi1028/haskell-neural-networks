@@ -15,7 +15,7 @@
 --   $ ./Main
 
 import NeuralNetwork
-  ( Activation (Id, Relu),
+  ( Activation (Id, Relu, Sigmoid),
     Mode (TrainMode),
     NeuralNetworkConfig (NeuralNetworkConfig),
     RunNet (Train),
@@ -77,7 +77,7 @@ experiment1 = do
   trainSet <- makeCircles 200 0.6 0.1
   testSet <- makeCircles 100 0.6 0.1
 
-  net <- genNetwork $ NeuralNetworkConfig 2 [(128, Relu), (1, Id)]
+  net <- genNetwork $ NeuralNetworkConfig 2 [(128, Relu), (1, Sigmoid)]
 
   let epochs = 1000
       lr = 0.001 -- Learning rate
