@@ -128,7 +128,7 @@ optimize ::
   NeuralNetwork Double
 optimize lr iterN net runNet = flip cata iterN $ \case
   Nothing -> net
-  Just net' -> zipWith f net . snd $ pass net' runNet
+  Just net' -> zipWith f net' . snd $ pass net' runNet
     where
       f (Layer w b act) (Gradients dW dB) = Layer (w - lr `scale` dW) (b - lr `scale` dB) act
 
