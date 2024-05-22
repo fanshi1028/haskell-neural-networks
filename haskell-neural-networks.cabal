@@ -34,7 +34,8 @@ executable exe
     simple-reflect,
     random,
     lens,
-    streamly-core
+    streamly-core,
+    statistics
 
 
   -- , beam-core
