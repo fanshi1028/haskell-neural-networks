@@ -36,7 +36,10 @@ executable exe
     lens,
     streamly-core,
     statistics,
-    diagrams
+    diagrams,
+    Chart,
+    hvega
+
 
   hs-source-dirs:   app
   default-language: GHC2021
