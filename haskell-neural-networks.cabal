@@ -35,7 +35,8 @@ executable exe
     random,
     lens,
     streamly-core,
-    statistics
+    statistics,
+    diagrams
 
 
   -- , beam-core
