@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MonoLocalBinds #-}
+{-# LANGUAGE ViewPatterns #-}
 
 -- \| Circles dataset and gradient descent in a multilayer neural network
 --
@@ -18,8 +19,9 @@
 
 import Graphics.Rendering.Chart.Backend.Diagrams (toFile)
 import Graphics.Rendering.Chart.Easy (Default (def), blue, layout_title, opaque, orange, plot, points, setColors, (.=))
+import Data.Massiv.Array (Comp (ParN), Ix2 (Ix2), Load (makeArray), Sz (Sz2), compute, iunfoldlS_, makeStencil, applyStencil, noPadding, toList, dropWindow)
 import NeuralNetwork
-  ( Activation (Id, Relu, Sigmoid),
+  ( Activation (Relu, Sigmoid),
     Mode (TrainMode),
     NeuralNetworkConfig (NeuralNetworkConfig),
     RunNet (Train),
@@ -29,67 +31,61 @@ import NeuralNetwork
     optimize,
     optimizeAdam,
   )
-import Numeric.LinearAlgebra (Linear (scale), fromBlocks, rand, randn, toLists, (===), (><))
+import Statistics.Distribution (ContGen (genContVar))
+import Statistics.Distribution.Normal (normalDistr)
+import System.Random (RandomGen, newStdGen, uniformR)
+import System.Random.Stateful (runStateGen)
 import Text.Printf (printf)
 
+genNoise :: (RandomGen g) => Double -> g -> (Double, g)
+genNoise noise g' = runStateGen g' . genContVar $ normalDistr noise 1
+
 -- | Circles dataset
-makeCircles ::
-  Int -> Double -> Double -> IO (RunNet TrainMode Double)
+makeCircles :: Int -> Double -> Double -> IO (RunNet TrainMode Double)
 makeCircles m factor noise = do
-  let rand' n = (scale (2 * pi)) <$> rand n 1
-      m1 = m `div` 2
-      m2 = m - (m `div` 2)
-
-  r1 <- rand' m1
-  r2 <- rand' m2
-  ns <- scale noise <$> randn m 2
-
-  let outerX = cos r1
-      outerY = sin r1
-      innerX = scale factor $ cos r2
-      innerY = scale factor $ sin r2
-      -- Merge them all
-      x = fromBlocks [[outerX, outerY], [innerX, innerY]]
-
-      -- Labels
-      y1 = m1 >< 1 $ repeat 0
-      y2 = m2 >< 1 $ repeat 1
-      y = y1 === y2
-
-  return $ Train (x + ns) y
+  g <- newStdGen
+  let features =
+        compute
+          . ( iunfoldlS_ (Sz2 2 m) $ \(Ix2 i j) (lastRand, g') ->
+                let factor' = if j < m `div` 2 then 1 else factor
+                 in case i of
+                      0 ->
+                        let (r, g'') = uniformR (0, 2 * pi) g'
+                            (noise', g''') = genNoise noise g''
+                         in ((r, g'''), factor' * sin r + noise')
+                      1 ->
+                        let (noise', g'') = genNoise noise g'
+                         in ((lastRand, g''), factor' * cos lastRand + noise')
+                      _ -> error "impssible"
+            )
+          $ (0, g)
+      targets = makeArray (ParN 4) (Sz2 1 m) $ \(Ix2 _ j) -> if j < m `div` 2 then 0 else 1
+  pure $ Train features targets
 
 -- | Spirals dataset.
 -- Note, produces twice more points than m.
-makeSpirals ::
-  Int -> Double -> IO (RunNet TrainMode Double)
-makeSpirals m noise = do
-  r0 <- (scale (780 * 2 * pi / 360) . sqrt) <$> rand m 1
-  d1x0 <- scale noise <$> rand m 1
-  d1y0 <- scale noise <$> rand m 1
+-- makeSpirals ::
+--   Int -> Double -> IO (RunNet TrainMode Double)
+-- makeSpirals m noise = do
+--   r0 <- (M.map (780 * 2 * pi / 360) . sqrt) <$> rand (0, 1) (Sz2 m 1)
+--   let makeNoise = M.map (noise *) <$> rand (0, 1) (Sz2 m 1)
+--   d1x0 <- makeNoise
+--   d1y0 <- makeNoise
 
-  let d1x = d1x0 - cos (r0) * r0
-  let d1y = d1y0 + sin (r0) * r0
+--   let d1x = d1x0 - cos (r0) * r0
+--   let d1y = d1y0 + sin (r0) * r0
 
-  let x = (fromBlocks [[d1x, d1y], [-d1x, -d1y]]) / 10.0
-  let y1 = m >< 1 $ repeat 0
-  let y2 = m >< 1 $ repeat 1
-  let y = y1 === y2
-  return $ Train x y
+--   let x = (fromBlocks [[d1x, d1y], [-d1x, -d1y]]) / 10.0
+--   let y1 = m >< 1 $ repeat 0
+--   let y2 = m >< 1 $ repeat 1
+--   let y = y1 === y2
+--   return $ Train x y
 
 drawPoints :: String -> RunNet TrainMode Double -> IO ()
 drawPoints name (Train inputs tgts) = do
   let inputs' =
-        ( \case
-            x : [y] -> (x, y)
-            _ -> error "impossible"
-        )
-          <$> toLists inputs
-      tgts' =
-        ( \case
-            [x] -> x
-            _ -> error "impossible"
-        )
-          <$> toLists tgts
+          toList . dropWindow $ applyStencil noPadding (makeStencil (Sz2 2 1) (Ix2 0 0) (\get -> (get $ Ix2 0 0, get $ Ix2 1 0))) inputs
+      tgts' = toList tgts
       pointsByClass [] [] r = r
       pointsByClass [] _ _ = error "impossible: not enough target"
       pointsByClass _ [] _ = error "impossible: not enough input"
@@ -104,18 +100,15 @@ drawPoints name (Train inputs tgts) = do
     plot $ points "1" ps1
     plot $ points "2" ps2
 
-
-
-experiment1 :: IO ()
-experiment1 = do
+experiment1 :: (RandomGen g) => g -> IO ()
+experiment1 g = do
   trainSet <- makeCircles 200 0.6 0.1
   testSet <- makeCircles 100 0.6 0.1
 
   drawPoints "train_circle.svg" trainSet
 
-  net <- genNetwork $ NeuralNetworkConfig 2 [(128, Relu), (1, Sigmoid)]
-
-  let epochs = 1000
+  let net = genNetwork g $ NeuralNetworkConfig 2 [(128, Relu), (1, Sigmoid)]
+      epochs = 1000
       lr = 0.001 -- Learning rate
       net' = optimize lr epochs net trainSet
       netA = optimizeAdam adamParams epochs net trainSet
@@ -129,39 +122,43 @@ experiment1 = do
   putStrLn $ printf "Training accuracy (Adam) %.1f" (netA `accuracy` trainSet)
   putStrLn $ printf "Validation accuracy (Adam) %.1f\n" (netA `accuracy` testSet)
 
-  putStrLn ""
+-- experiment2 :: IO ()
+-- experiment2 = do
+--   trainSet <- makeSpirals 200 0.5
+--   testSet <- makeSpirals 100 0.5
+--   -- saveMatrix "/tmp/spir.x" "%g" dta
+--   -- saveMatrix "/tmp/spir.y" "%g" tgt
 
-experiment2 :: IO ()
-experiment2 = do
-  trainSet <- makeSpirals 200 0.5
-  testSet <- makeSpirals 100 0.5
+--   drawPoints "train_spiral.svg" trainSet
+--   let epochs = 700
 
-  drawPoints "train_spiral.svg" trainSet
+--   putStrLn $ printf "Spirals problem, Adam, %d epochs" epochs
+--   putStrLn "---"
+--   putStrLn "1 hidden layer, 128 neurons (513 parameters)"
+--   net0 <- genNetwork $ NeuralNetworkConfig 2 [(128, Relu), (1, Id)]
+--   let net0' = optimizeAdam adamParams epochs net0 trainSet
 
-  let epochs = 700
+--   putStrLn $ printf "Training accuracy %.1f" (net0' `accuracy` trainSet)
+--   putStrLn $ printf "Validation accuracy %.1f\n" (net0' `accuracy` testSet)
 
-  putStrLn $ printf "Spirals problem, Adam, %d epochs" epochs
-  putStrLn "---"
-  putStrLn "1 hidden layer, 128 neurons (513 parameters)"
-  net0 <- genNetwork $ NeuralNetworkConfig 2 [(128, Relu), (1, Id)]
-  let net0' = optimizeAdam adamParams epochs net0 trainSet
+--   putStrLn "1 hidden layer, 512 neurons (2049 parameters)"
+--   net1 <- genNetwork $ NeuralNetworkConfig 2 [(512, Relu), (1, Id)]
+--   let net1' = optimizeAdam adamParams epochs net1 trainSet
 
-  putStrLn $ printf "Training accuracy %.1f" (net0' `accuracy` trainSet)
-  putStrLn $ printf "Validation accuracy %.1f\n" (net0' `accuracy` testSet)
+--   putStrLn $ printf "Training accuracy %.1f" (net1' `accuracy` trainSet)
+--   putStrLn $ printf "Validation accuracy %.1f\n" (net1' `accuracy` testSet)
 
-  putStrLn "1 hidden layer, 512 neurons (2049 parameters)"
-  net1 <- genNetwork $ NeuralNetworkConfig 2 [(512, Relu), (1, Id)]
-  let net1' = optimizeAdam adamParams epochs net1 trainSet
+--   putStrLn "3 hidden layers, 40, 25, and 10 neurons (1416 parameters)"
+--   net2 <- genNetwork $ NeuralNetworkConfig 2 [(40, Relu), (25, Relu), (10, Relu), (1, Id)]
+--   let net2' = optimizeAdam adamParams epochs net2 trainSet
 
-  putStrLn $ printf "Training accuracy %.1f" (net1' `accuracy` trainSet)
-  putStrLn $ printf "Validation accuracy %.1f\n" (net1' `accuracy` testSet)
-
-  putStrLn "3 hidden layers, 40, 25, and 10 neurons (1416 parameters)"
-  net2 <- genNetwork $ NeuralNetworkConfig 2 [(40, Relu), (25, Relu), (10, Relu), (1, Id)]
-  let net2' = optimizeAdam adamParams epochs net2 trainSet
-
-  putStrLn $ printf "Training accuracy %.1f" (net2' `accuracy` trainSet)
-  putStrLn $ printf "Validation accuracy %.1f\n" (net2' `accuracy` testSet)
+--   putStrLn $ printf "Training accuracy %.1f" (net2' `accuracy` trainSet)
+--   putStrLn $ printf "Validation accuracy %.1f\n" (net2' `accuracy` testSet)
 
 main :: IO ()
-main = experiment1 >> experiment2
+main = do
+  g <- newStdGen
+  print g
+  experiment1 g
+
+-- >> experiment2
