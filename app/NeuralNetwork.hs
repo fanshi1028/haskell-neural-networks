@@ -23,67 +23,61 @@ module NeuralNetwork
     -- * Inference
     inferBinary,
     accuracy,
-    genWeights,
   )
 where
 
 import Data.Functor.Base (NonEmptyF (NonEmptyF))
 import Data.Functor.Foldable (Recursive (cata, para))
 import Data.List.NonEmpty as NE (NonEmpty ((:|)))
-import Foreign (Storable)
+import Data.Massiv.Array (Comp (ParN), Dimension (Dim2), Ix2 (Ix2), Load (makeArray), Matrix, NumericFloat, Size (size), Sz (Sz1, Sz2), U (U), Unbox, absA, applyStencil, avgStencil, compute, computeAs, defRowMajor, expA, expandWithin, extract', makeSplitSeedArray, negateA, noPadding, recipA, sqrtA, transpose, (!), (!*!), (!+!), (!-!), (!/!), (!>), (!><!), (*.), (+.), (-.), (.+), (.-))
+import Data.Massiv.Array qualified as A (map)
+import Data.Massiv.Array.Numeric ()
 import GHC.Natural (Natural)
-import GHC.TypeLits (KnownNat (natSing), fromSNat)
-import Numeric.LinearAlgebra as LA
-  ( Linear (scale),
-    Matrix,
-    Transposable (tr'),
-    cmap,
-    cols,
-    matrix,
-    randn,
-    rows,
-    sumElements,
-    toColumns,
-    (<>), (><),
-  )
-import Numeric.LinearAlgebra.Static qualified as LS (Domain (dmmap), L, randn)
+import Statistics.Distribution (ContGen (genContVar))
+import Statistics.Distribution.Normal (standard)
+import System.Random (RandomGen (split))
+import System.Random.Stateful (runStateGen)
 
 -- Activation function:
-data Activation = Relu | Sigmoid | Tanh | Id
+data Activation = Relu | Sigmoid | Tanh | Id deriving (Show)
 
 -- Neural network layer: weights, biases, and activation
-data Layer a = Layer !(Matrix a) !(Matrix a) !Activation
+data Layer a
+  = Layer !(Matrix U a) !(Matrix U a) !Activation
+  deriving (Show)
+
+-- \| Batchnorm1d (Vector a) (Vector a) (Vector a) (Vector a)
 
 data NeuralNetworkConfig = NeuralNetworkConfig !Int ![(Int, Activation)]
 
 type NeuralNetwork a = [Layer a]
 
 -- | Weight and bias gradients
-data Gradients a = Gradients !(Matrix a) !(Matrix a)
+data Gradients a = Gradients !(Matrix U a) !(Matrix U a)
+
+instance (Unbox e, Floating e) => NumericFloat U e
 
 -- | Lookup activation function by a symbol
-getActivation :: Activation -> (Matrix Double -> Matrix Double)
+getActivation :: Activation -> (Matrix U Double -> Matrix U Double)
 getActivation = \case
   Id -> id
-  Sigmoid -> cmap $ \x -> recip (1.0 + exp (-x))
-  Relu -> cmap $ max 0
-  Tanh -> cmap $ \x -> 2 * recip (1 + exp (-2 * x)) - 1
-
-filledOne :: (Storable a, Num a) => Matrix t -> Matrix a
-filledOne z = rows z >< cols z $ repeat 1
+  Sigmoid -> \x -> recipA (1.0 +. expA (negateA x))
+  Relu -> compute . A.map (max 0)
+  Tanh -> \x -> 2 *. recipA (1 +. expA (negateA $ 2 *. x)) .- 1
 
 -- | Lookup activation function derivative by a symbol
-getActivation' :: Activation -> Matrix Double -> (Matrix Double -> Matrix Double)
-getActivation' Id _ = id
-getActivation' Sigmoid (getActivation Sigmoid -> z) = (z * (filledOne z - z) *)
-getActivation' Relu (cmap (\z -> if z >= 0 then 1 else 0) -> z) = (z *)
-getActivation' Tanh (getActivation Tanh -> z) = ((filledOne z - cmap (^ (2 :: Integer)) z) *)
+getActivation' :: Activation -> Matrix U Double -> (Matrix U Double -> Matrix U Double)
+-- getActivation' Id _ = id
+getActivation' Id _ = undefined -- ??
+getActivation' Sigmoid (getActivation Sigmoid -> z) = (z !*! (1 -. z) !*!)
+getActivation' Relu (compute . A.map (\z -> if z >= 0 then 1 else 0) -> z) = (z !*!)
+getActivation' Tanh (getActivation Tanh -> z) = ((compute $ 1 -. (A.map (^ (2 :: Integer)) z)) !*!)
 
 data Mode = TrainMode | InferMode
 
 data RunNet (mode :: Mode) r where
-  Train :: (Matrix r) -> (Matrix r) -> RunNet TrainMode r
-  Infer :: (Matrix r) -> RunNet InferMode r
+  Train :: (Matrix U r) -> (Matrix U r) -> RunNet TrainMode r
+  Infer :: (Matrix U r) -> RunNet InferMode r
 
 -- | Both forward and backward neural network passes
 pass ::
@@ -92,7 +86,7 @@ pass ::
   -- | Data set
   RunNet s Double ->
   -- | NN computation from forward pass and weights gradients
-  (Matrix Double, [Gradients Double])
+  (Matrix U Double, [Gradients Double])
 pass net run = snd . _pass net $ case run of
   Train x _ -> x
   Infer x -> x
@@ -101,21 +95,23 @@ pass net run = snd . _pass net $ case run of
       let -- Gradient of cross-entropy loss
           -- after sigmoid activation.
           mLoss = case run of
-            Train _ target -> Just $ prediction' - target
+            Train _ target -> Just $ prediction' !-! target
             Infer _ -> Nothing
        in (mLoss, (prediction', []))
     _pass (Layer w b sact : layers) inp =
-      let lin = (inp LA.<> w) + b
-          y = getActivation sact lin
+      let Sz2 inpR _ = size inp
+          lin = (inp !><! w) !+! (compute $ expandWithin Dim2 (Sz1 inpR) (\v _ -> v) (b !> 0))
+          y = compute $ getActivation sact lin
           (mDZ, (prediction', gradients)) = _pass layers y
        in case mDZ of
             Nothing -> (Nothing, (prediction', []))
             Just dZ -> (Just dX, (prediction', Gradients dW dB : gradients))
               where
-                dY = getActivation' sact lin dZ
-                dW = cmap (/ (fromIntegral $ rows inp)) (tr' inp LA.<> dY)
-                dB = cmap (/ (fromIntegral $ rows dY)) $ matrix (cols dY) $ map sumElements (toColumns dY)
-                dX = dY LA.<> tr' w
+                dY = compute $ getActivation' sact lin dZ
+                dW = compute $ A.map (/ fromIntegral inpR) $ compute (transpose inp) !><! dY
+                Sz2 dYR _ = size dY
+                dB = compute $ applyStencil noPadding (avgStencil $ Sz2 dYR 1) dY
+                dX = dY !><! compute (transpose w)
 
 -- | Gradient descent optimization
 optimize ::
@@ -133,7 +129,7 @@ optimize lr iterN net runNet = flip cata iterN $ \case
   Nothing -> net
   Just net' -> zipWith f net' . snd $ pass net' runNet
     where
-      f (Layer w b act) (Gradients dW dB) = Layer (w - lr `scale` dW) (b - lr `scale` dB) act
+      f (Layer w b act) (Gradients (compute -> dW) (compute -> dB)) = Layer (w !-! lr *. dW) (b !-! lr *. dB) act
 
 data AdamParameters = AdamParameters
   { _beta1 :: !Double,
@@ -170,18 +166,15 @@ optimizeAdam p iterN w0 dataSet = w
     s0 = map zf w0
     v0 = map zf w0
     zf (Layer a b _) = (zerosLike a, zerosLike b)
-    zerosLike m = matrix c (replicate (r * c) 0.0)
-      where
-        r = rows m
-        c = cols m
+    zerosLike m = makeArray (ParN 4) (size m) $ \_ -> 0
     (w, _, _) = _adam p iterN (w0, s0, v0) dataSet
 
 _adam ::
   AdamParameters ->
   Natural ->
-  ([Layer Double], [(Matrix Double, Matrix Double)], [(Matrix Double, Matrix Double)]) ->
+  ([Layer Double], [(Matrix U Double, Matrix U Double)], [(Matrix U Double, Matrix U Double)]) ->
   RunNet TrainMode Double ->
-  ([Layer Double], [(Matrix Double, Matrix Double)], [(Matrix Double, Matrix Double)])
+  ([Layer Double], [(Matrix U Double, Matrix U Double)], [(Matrix U Double, Matrix U Double)])
 _adam
   AdamParameters
     { _lr = lr,
@@ -205,54 +198,49 @@ _adam
 
             f ::
               Layer Double ->
-              (Matrix Double, Matrix Double) ->
-              (Matrix Double, Matrix Double) ->
+              (Matrix U Double, Matrix U Double) ->
+              (Matrix U Double, Matrix U Double) ->
               Layer Double
             f (Layer w_ b_ sf) (vW, vB) (sW, sB) =
               Layer
-                (w_ - lr `scale` vW / ((sqrt sW) `addC` epsilon))
-                (b_ - lr `scale` vB / ((sqrt sB) `addC` epsilon))
+                (w_ !-! (compute $ lr *. vW !/! ((sqrtA sW) .+ epsilon)))
+                (b_ !-! (compute $ lr *. vB !/! ((sqrtA sB) .+ epsilon)))
                 sf
 
-            addC m c = cmap (+ c) m
-
             f2 ::
-              (Matrix Double, Matrix Double) ->
+              (Matrix U Double, Matrix U Double) ->
               Gradients Double ->
-              (Matrix Double, Matrix Double)
+              (Matrix U Double, Matrix U Double)
             f2 (sW, sB) (Gradients dW dB) =
-              ( beta2 `scale` sW + (1 - beta2) `scale` (dW ^ (2 :: Integer)),
-                beta2 `scale` sB + (1 - beta2) `scale` (dB ^ (2 :: Integer))
+              ( beta2 *. sW !+! (1 - beta2) *. (dW !*! dW),
+                beta2 *. sB !+! (1 - beta2) *. (dB !*! dB)
               )
 
             f3 ::
-              (Matrix Double, Matrix Double) ->
+              (Matrix U Double, Matrix U Double) ->
               Gradients Double ->
-              (Matrix Double, Matrix Double)
+              (Matrix U Double, Matrix U Double)
             f3 (vW, vB) (Gradients dW dB) =
-              ( beta1 `scale` vW + (1 - beta1) `scale` dW,
-                beta1 `scale` vB + (1 - beta1) `scale` dB
+              ( beta1 *. vW !+! (1 - beta1) *. dW,
+                beta1 *. vB !+! (1 - beta1) *. dB
               )
 
-genWeights :: forall m n. (KnownNat m, KnownNat n) => IO (LS.L m n)
-genWeights = LS.dmmap (* sqrt (1.0 / (fromIntegral . fromSNat $ natSing @m))) <$> LS.randn
-
 -- | Generate a neural network with random weights
-genNetwork :: NeuralNetworkConfig -> IO (NeuralNetwork Double)
-genNetwork (NeuralNetworkConfig nStart l) = flip para ((nStart, undefined) :| l) $ \case
-  NonEmptyF (nIn, _) mr -> case mr of
-    Nothing -> pure []
-    Just ((nOut, activation) :| _, mLayers) -> do
-      layers <- mLayers
-      let genWeights' nIn' = scale (sqrt $ 1.0 / fromIntegral nIn') <$> randn nIn' nOut
-      w <- genWeights' nIn
-      b <- genWeights' 1
-      pure $ Layer w b activation : layers
+genNetwork :: (RandomGen g) => g -> NeuralNetworkConfig -> NeuralNetwork Double
+genNetwork g (NeuralNetworkConfig nStart l) =
+  fst . flip para ((nStart, undefined) :| l) $ \case
+    NonEmptyF (nIn, _) mr -> case mr of
+      Nothing -> ([], g)
+      Just ((nOut, activation) :| _, (layers, split -> (g', g''))) ->
+        let a = computeAs U $ makeSplitSeedArray defRowMajor g' split (ParN 4) (Sz2 (nIn + 1) nOut) $ \_ _ g''' -> runStateGen g''' (genContVar standard)
+            w = compute $ extract' (Ix2 0 0) (Sz2 nIn nOut) a
+            b = compute $ extract' (Ix2 (nIn - 1) 0) (Sz2 1 nOut) a
+         in (Layer w b activation : layers, g'')
 
 -- | Perform a binary classification
 inferBinary ::
-  NeuralNetwork Double -> Matrix Double -> Matrix Double
-inferBinary net dta = cmap (\a -> if a < 0.5 then 0 else 1) . fst . pass net $ Infer dta
+  NeuralNetwork Double -> Matrix U Double -> Matrix U Double
+inferBinary net dta = compute $ A.map (\a -> if a < 0.5 then 0 else 1) . fst . pass net $ Infer dta
 
 -- | Binary classification accuracy in percent
 accuracy ::
@@ -261,7 +249,7 @@ accuracy ::
   -- | Dataset
   RunNet TrainMode Double ->
   Double
-accuracy net (Train dta tgt) = 100 * (1 - e / m)
+accuracy net (Train dta tgt) = 100 * (1 - (avg ! (Ix2 0 0)))
   where
-    e = sumElements $ abs (tgt - net `inferBinary` dta)
-    m = fromIntegral $ rows tgt
+    a = absA $ tgt !-! net `inferBinary` dta
+    avg = compute @U $ applyStencil noPadding (avgStencil $ size a) a
