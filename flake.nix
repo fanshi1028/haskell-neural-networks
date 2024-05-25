@@ -27,7 +27,9 @@
         in {
           default = hsPackages.developPackage {
             root = ./.;
-            modifier = drv: pkgs.haskell.lib.appendConfigureFlag drv "-O2";
+            modifier = drv:
+              with pkgs.haskell.lib;
+              doBenchmark (appendConfigureFlag drv "-O2");
           };
         }) nixpkgs.legacyPackages;
 
@@ -46,6 +48,7 @@
               ghcid
             ];
             withHoogle = true;
+            doBenchmark = true;
           };
         }) nixpkgs.legacyPackages;
 
