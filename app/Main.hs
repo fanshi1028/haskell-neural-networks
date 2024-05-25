@@ -135,8 +135,6 @@ experiment2 :: IO ()
 experiment2 = do
   trainSet <- makeSpirals 200 0.5
   testSet <- makeSpirals 100 0.5
-  -- saveMatrix "/tmp/spir.x" "%g" dta
-  -- saveMatrix "/tmp/spir.y" "%g" tgt
 
   drawPoints "train_spiral.svg" trainSet
 
