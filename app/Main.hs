@@ -1,4 +1,6 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MonoLocalBinds #-}
 
 -- \| Circles dataset and gradient descent in a multilayer neural network
 --
@@ -14,6 +16,8 @@
 --   $ stack --resolver lts-10.6 --install-ghc ghc --package hmatrix-0.18.2.0 --package hmatrix-morpheus-0.1.1.2 -- -O2 Main.hs
 --   $ ./Main
 
+import Graphics.Rendering.Chart.Backend.Diagrams (toFile)
+import Graphics.Rendering.Chart.Easy (Default (def), blue, layout_title, opaque, orange, plot, points, setColors, (.=))
 import NeuralNetwork
   ( Activation (Id, Relu, Sigmoid),
     Mode (TrainMode),
@@ -25,7 +29,7 @@ import NeuralNetwork
     optimize,
     optimizeAdam,
   )
-import Numeric.LinearAlgebra (Linear (scale), fromBlocks, rand, randn, (===), (><))
+import Numeric.LinearAlgebra (Linear (scale), fromBlocks, rand, randn, toLists, (===), (><))
 import Text.Printf (printf)
 
 -- | Circles dataset
@@ -72,10 +76,42 @@ makeSpirals m noise = do
   let y = y1 === y2
   return $ Train x y
 
+drawPoints :: String -> RunNet TrainMode Double -> IO ()
+drawPoints name (Train inputs tgts) = do
+  let inputs' =
+        ( \case
+            x : [y] -> (x, y)
+            _ -> error "impossible"
+        )
+          <$> toLists inputs
+      tgts' =
+        ( \case
+            [x] -> x
+            _ -> error "impossible"
+        )
+          <$> toLists tgts
+      pointsByClass [] [] r = r
+      pointsByClass [] _ _ = error "impossible: not enough target"
+      pointsByClass _ [] _ = error "impossible: not enough input"
+      pointsByClass (x : xs) (y : ys) (as, bs)
+        | y == 0 = pointsByClass xs ys (x : as, bs)
+        | y == 1 = pointsByClass xs ys (as, x : bs)
+        | otherwise = error "impossible: y not 0 or 1"
+      (ps1, ps2) = pointsByClass inputs' tgts' ([], [])
+  toFile def name $ do
+    layout_title .= "train_circles"
+    setColors $ [opaque orange, opaque blue]
+    plot $ points "1" ps1
+    plot $ points "2" ps2
+
+
+
 experiment1 :: IO ()
 experiment1 = do
   trainSet <- makeCircles 200 0.6 0.1
   testSet <- makeCircles 100 0.6 0.1
+
+  drawPoints "train_circle.svg" trainSet
 
   net <- genNetwork $ NeuralNetworkConfig 2 [(128, Relu), (1, Sigmoid)]
 
@@ -101,6 +137,8 @@ experiment2 = do
   testSet <- makeSpirals 100 0.5
   -- saveMatrix "/tmp/spir.x" "%g" dta
   -- saveMatrix "/tmp/spir.y" "%g" tgt
+
+  drawPoints "train_spiral.svg" trainSet
 
   let epochs = 700
 

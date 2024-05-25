@@ -39,6 +39,7 @@ executable exe
     diagrams,
     Chart,
     hvega,
+    Chart-diagrams
 
 
   hs-source-dirs:   app
