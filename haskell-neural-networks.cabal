@@ -38,7 +38,8 @@ executable exe
     statistics,
     diagrams,
     Chart,
-    hvega
+    hvega,
+    criterion
 
 
   hs-source-dirs:   app
