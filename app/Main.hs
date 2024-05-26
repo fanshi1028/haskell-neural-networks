@@ -126,8 +126,8 @@ experiment1 g = do
 
 experiment2 :: (RandomGen g) => g -> IO g
 experiment2 g = do
-  trainSet <- makeSpirals 200 0.05
-  testSet <- makeSpirals 100 0.05
+  trainSet <- makeSpirals 200 0.02
+  testSet <- makeSpirals 100 0.02
 
   drawPoints "train_spiral.svg" trainSet
   let epochs = 700
