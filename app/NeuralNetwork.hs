@@ -67,8 +67,7 @@ getActivation = \case
 
 -- | Lookup activation function derivative by a symbol
 getActivation' :: Activation -> Matrix U Double -> (Matrix U Double -> Matrix U Double)
--- getActivation' Id _ = id
-getActivation' Id _ = undefined -- ??
+getActivation' Id _ = id
 getActivation' Sigmoid (getActivation Sigmoid -> z) = (z !*! (1 -. z) !*!)
 getActivation' Relu (compute . A.map (\z -> if z >= 0 then 1 else 0) -> z) = (z !*!)
 getActivation' Tanh (getActivation Tanh -> z) = ((compute $ 1 -. (A.map (^ (2 :: Integer)) z)) !*!)
@@ -232,14 +231,14 @@ _adam
               )
 
 -- | Generate a neural network with random weights
-genNetwork :: (RandomGen g) => g -> NeuralNetworkConfig -> NeuralNetwork Double
+genNetwork :: (RandomGen g) => g -> NeuralNetworkConfig -> (NeuralNetwork Double, g)
 genNetwork g (NeuralNetworkConfig nStart l) =
-  fst . flip para ((nStart, undefined) :| l) $ \case
+  flip para ((nStart, undefined) :| l) $ \case
     NonEmptyF (nIn, _) mr -> case mr of
       Nothing -> ([], g)
       Just ((nOut, activation) :| _, (layers, split -> (g', g''))) ->
         let a = computeAs U $ makeSplitSeedArray defRowMajor g' split (ParN 4) (Sz2 nOut (nIn + 1)) $ \_ _ g''' -> runStateGen g''' (genContVar standard)
-            w = compute $ extract' (Ix2 0 0) (Sz2 nOut nIn ) a
+            w = compute $ extract' (Ix2 0 0) (Sz2 nOut nIn) a
             b = compute $ extract' (Ix2 0 (nIn - 1)) (Sz2 nOut 1) a
          in (Layer w b activation : layers, g'')
 
