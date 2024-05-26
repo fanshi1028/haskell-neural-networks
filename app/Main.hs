@@ -70,8 +70,8 @@ makeSpirals m noise = do
         expandOuter @U
           (Sz1 2)
           ( \((4 * pi *) . sqrt -> r) -> \case
-              0 -> r * cos r
-              1 -> r * sin r
+              0 -> r / 10 * cos r
+              1 -> r / 10 * sin r
               _ -> error "impossible: !!!"
           )
           . compute
@@ -126,8 +126,8 @@ experiment1 g = do
 
 experiment2 :: (RandomGen g) => g -> IO g
 experiment2 g = do
-  trainSet <- makeSpirals 200 0.5
-  testSet <- makeSpirals 100 0.5
+  trainSet <- makeSpirals 200 0.05
+  testSet <- makeSpirals 100 0.05
 
   drawPoints "train_spiral.svg" trainSet
   let epochs = 700
