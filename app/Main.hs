@@ -17,9 +17,10 @@
 --   $ stack --resolver lts-10.6 --install-ghc ghc --package hmatrix-0.18.2.0 --package hmatrix-morpheus-0.1.1.2 -- -O2 Main.hs
 --   $ ./Main
 
+import Data.Bifunctor (Bifunctor (first))
+import Data.Massiv.Array (Comp (ParN), Ix2 (Ix2), Load (makeArray), Size (size), Sz (Sz1, Sz2), U, append', applyStencil, compute, defRowMajor, dropWindow, expandOuter, makeSplitSeedArray, makeStencil, noPadding, toList, uniformRangeArray, (!+!))
 import Graphics.Rendering.Chart.Backend.Diagrams (toFile)
 import Graphics.Rendering.Chart.Easy (Default (def), blue, layout_title, opaque, orange, plot, points, setColors, (.=))
-import Data.Massiv.Array (Comp (ParN), Ix2 (Ix2), Load (makeArray), Sz (Sz2), compute, iunfoldlS_, makeStencil, applyStencil, noPadding, toList, dropWindow)
 import NeuralNetwork
   ( Activation (Relu, Sigmoid),
     Mode (TrainMode),
@@ -32,35 +33,32 @@ import NeuralNetwork
     optimizeAdam,
   )
 import Statistics.Distribution (ContGen (genContVar))
-import Statistics.Distribution.Normal (normalDistr)
-import System.Random (RandomGen, newStdGen, uniformR)
+import Statistics.Distribution.Normal (standard)
+import System.Random (RandomGen (split), newStdGen)
 import System.Random.Stateful (runStateGen)
 import Text.Printf (printf)
 
 genNoise :: (RandomGen g) => Double -> g -> (Double, g)
-genNoise noise g' = runStateGen g' . genContVar $ normalDistr noise 1
+genNoise noise g = first (noise *) . runStateGen g $ genContVar standard
 
 -- | Circles dataset
 makeCircles :: Int -> Double -> Double -> IO (RunNet TrainMode Double)
 makeCircles m factor noise = do
-  g <- newStdGen
-  let features =
-        compute
-          . ( iunfoldlS_ (Sz2 2 m) $ \(Ix2 i j) (lastRand, g') ->
-                let factor' = if j < m `div` 2 then 1 else factor
-                 in case i of
-                      0 ->
-                        let (r, g'') = uniformR (0, 2 * pi) g'
-                            (noise', g''') = genNoise noise g''
-                         in ((r, g'''), factor' * sin r + noise')
-                      1 ->
-                        let (noise', g'') = genNoise noise g'
-                         in ((lastRand, g''), factor' * cos lastRand + noise')
-                      _ -> error "impssible"
-            )
-          $ (0, g)
-      targets = makeArray (ParN 4) (Sz2 1 m) $ \(Ix2 _ j) -> if j < m `div` 2 then 0 else 1
-  pure $ Train features targets
+  (g, g') <- split <$> newStdGen
+  let makeFeatures factor' size' =
+        expandOuter @U
+          (Sz1 2)
+          ( \r -> \case
+              0 -> factor' * cos r
+              1 -> factor' * sin r
+              _ -> error "impossible: !!!"
+          )
+          . compute
+          $ uniformRangeArray g (0, 2 * pi) (ParN 4) (Sz1 size')
+      features = compute $ append' 1 (makeFeatures 1 $ m `div` 2) (makeFeatures factor $ m - m `div` 2)
+      noises = compute $ makeSplitSeedArray defRowMajor g' split (ParN 4) (Sz2 2 m) (\_ _ g'' -> genNoise noise g'')
+      targets = makeArray (ParN 4) (Sz2 1 m) $ \(Ix2 _ j) -> if j <= m `div` 2 then 0 else 1
+  pure $ Train (features !+! noises) targets
 
 -- | Spirals dataset.
 -- Note, produces twice more points than m.
@@ -84,7 +82,7 @@ makeCircles m factor noise = do
 drawPoints :: String -> RunNet TrainMode Double -> IO ()
 drawPoints name (Train inputs tgts) = do
   let inputs' =
-          toList . dropWindow $ applyStencil noPadding (makeStencil (Sz2 2 1) (Ix2 0 0) (\get -> (get $ Ix2 0 0, get $ Ix2 1 0))) inputs
+        toList . dropWindow $ applyStencil noPadding (makeStencil (Sz2 2 1) (Ix2 0 0) (\get -> (get $ Ix2 0 0, get $ Ix2 1 0))) inputs
       tgts' = toList tgts
       pointsByClass [] [] r = r
       pointsByClass [] _ _ = error "impossible: not enough target"
