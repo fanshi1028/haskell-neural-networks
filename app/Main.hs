@@ -19,7 +19,7 @@
 import Graphics.Rendering.Chart.Backend.Diagrams (toFile)
 import Graphics.Rendering.Chart.Easy (Default (def), blue, layout_title, opaque, orange, plot, points, setColors, (.=))
 import NeuralNetwork
-  ( Activation (Id, Relu, Sigmoid),
+  ( Activation (Relu, Sigmoid),
     Mode (TrainMode),
     NeuralNetworkConfig (NeuralNetworkConfig),
     RunNet (Train),
@@ -143,21 +143,21 @@ experiment2 = do
   putStrLn $ printf "Spirals problem, Adam, %d epochs" epochs
   putStrLn "---"
   putStrLn "1 hidden layer, 128 neurons (513 parameters)"
-  net0 <- genNetwork $ NeuralNetworkConfig 2 [(128, Relu), (1, Id)]
+  net0 <- genNetwork $ NeuralNetworkConfig 2 [(128, Relu), (1, Sigmoid)]
   let net0' = optimizeAdam adamParams epochs net0 trainSet
 
   putStrLn $ printf "Training accuracy %.1f" (net0' `accuracy` trainSet)
   putStrLn $ printf "Validation accuracy %.1f\n" (net0' `accuracy` testSet)
 
   putStrLn "1 hidden layer, 512 neurons (2049 parameters)"
-  net1 <- genNetwork $ NeuralNetworkConfig 2 [(512, Relu), (1, Id)]
+  net1 <- genNetwork $ NeuralNetworkConfig 2 [(512, Relu), (1, Sigmoid)]
   let net1' = optimizeAdam adamParams epochs net1 trainSet
 
   putStrLn $ printf "Training accuracy %.1f" (net1' `accuracy` trainSet)
   putStrLn $ printf "Validation accuracy %.1f\n" (net1' `accuracy` testSet)
 
   putStrLn "3 hidden layers, 40, 25, and 10 neurons (1416 parameters)"
-  net2 <- genNetwork $ NeuralNetworkConfig 2 [(40, Relu), (25, Relu), (10, Relu), (1, Id)]
+  net2 <- genNetwork $ NeuralNetworkConfig 2 [(40, Relu), (25, Relu), (10, Relu), (1, Sigmoid)]
   let net2' = optimizeAdam adamParams epochs net2 trainSet
 
   putStrLn $ printf "Training accuracy %.1f" (net2' `accuracy` trainSet)
