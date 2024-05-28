@@ -110,8 +110,8 @@ experiment1 g = do
   let (net, _) = genNetwork g $ NeuralNetworkConfig 2 [(128, Relu), (1, Sigmoid)]
       epochs = 1000
       lr = 0.001 -- Learning rate
-      net' = optimize lr epochs net trainSet
       netA = optimizeAdam adamParams epochs net trainSet
+      (net', trainingLossData) = optimize lr epochs net trainSet
 
   putStrLn $ printf "Circles problem, 1 hidden layer of 128 neurons, %d epochs" epochs
   putStrLn "---"

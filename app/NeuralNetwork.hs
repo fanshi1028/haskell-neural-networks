@@ -27,10 +27,11 @@ module NeuralNetwork
   )
 where
 
+import Data.Bifunctor (Bifunctor (second))
 import Data.Functor.Base (NonEmptyF (NonEmptyF))
 import Data.Functor.Foldable (Recursive (cata, para))
 import Data.List.NonEmpty as NE (NonEmpty ((:|)))
-import Data.Massiv.Array (Comp (ParN), Dimension (Dim1), Ix2 (Ix2), Load (makeArray), Matrix, NumericFloat, Size (size), Sz (Sz1, Sz2), U (U), Unbox, absA, applyStencil, avgStencil, compute, computeAs, defRowMajor, expA, expandWithin, extract', makeSplitSeedArray, negateA, noPadding, recipA, sqrtA, transpose, (!), (!*!), (!+!), (!-!), (!/!), (!><!), (*.), (+.), (-.), (.+), (.-), (<!))
+import Data.Massiv.Array (Comp (ParN), Dimension (Dim1), Ix2 (Ix2), Load (makeArray), Matrix, NumericFloat, Size (size), Sz (Sz1, Sz2), U (U), Unbox, absA, applyStencil, avgStencil, compute, computeAs, defRowMajor, expA, expandWithin, extract', makeSplitSeedArray, negateA, noPadding, normL2, recipA, sqrtA, transpose, (!), (!*!), (!+!), (!-!), (!/!), (!><!), (*.), (+.), (-.), (.+), (.-), (<!))
 import Data.Massiv.Array qualified as A (map)
 import Data.Massiv.Array.Numeric ()
 import GHC.Natural (Natural)
@@ -125,11 +126,12 @@ optimize ::
   -- | Dataset
   RunNet TrainMode Double ->
   -- | Updated neural network
-  NeuralNetwork Double
-optimize lr iterN net runNet = flip cata iterN $ \case
-  Nothing -> net
-  Just net' -> zipWith f net' . snd $ pass net' runNet
+  (NeuralNetwork Double, [(Int, Double)])
+optimize lr iterN net runNet = second ($ []) . flip para iterN $ \case
+  Nothing -> (net, id)
+  Just (epoch, (net', appendTrainingLossData)) -> (zipWith f net' dNet, appendTrainingLossData . ((fromIntegral epoch, loss) :))
     where
+      (normL2 -> loss, dNet) = pass net' runNet
       f (Layer w b act) (Gradients dW dB) = Layer (w !-! lr *. dW) (b !-! lr *. dB) act
 
 data AdamParameters = AdamParameters
