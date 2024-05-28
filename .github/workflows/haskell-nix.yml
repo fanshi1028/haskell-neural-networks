@@ -53,7 +53,7 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
 
       - name: Upload Data Visualizations
-        if: ${{matrix.ghc == '9.8.1' && matrix.os == 'ubuntu-22.04'}}
+        if: ${{!contains(matrix.attr, 'shell') && contains(matrix.attr, 'linux')}}
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.exe }}-data-visualizations
