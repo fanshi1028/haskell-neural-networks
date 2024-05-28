@@ -109,15 +109,10 @@ pass net run = snd . _pass net $ case run of
               where
                 dY = getActivation' sact lin $ dZ
                 dY' = compute dY
-                -- dY = compute @U . transpose . getActivation' sact lin $ dZ
                 dW = compute $ A.map (/ fromIntegral inpC) $ dY' !><! compute (transpose inp)
-                -- dW = compute . A.map (/ fromIntegral inpC) . transpose $ inp !><! dY
                 Sz2 _ dYC = size dY
-                -- Sz2 dYR _ = size dY
                 dB = compute $ applyStencil noPadding (avgStencil $ Sz2 1 dYC) dY
-                -- dB = compute . transpose . dropWindow $ applyStencil noPadding (avgStencil $ Sz2 dYR 1) dY
                 dX = compute (transpose w) !><! dY'
-                -- dX = compute . transpose $ dY !><! w
 
 -- | Gradient descent optimization
 optimize ::
