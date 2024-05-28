@@ -29,7 +29,7 @@ where
 
 import Data.Bifunctor (Bifunctor (second))
 import Data.Functor.Base (NonEmptyF (NonEmptyF))
-import Data.Functor.Foldable (Recursive (cata, para))
+import Data.Functor.Foldable (Recursive (para))
 import Data.List.NonEmpty as NE (NonEmpty ((:|)))
 import Data.Massiv.Array (Comp (ParN), Dimension (Dim1), Ix2 (Ix2), Load (makeArray), Matrix, NumericFloat, Size (size), Sz (Sz1, Sz2), U (U), Unbox, absA, applyStencil, avgStencil, compute, computeAs, defRowMajor, expA, expandWithin, extract', makeSplitSeedArray, negateA, noPadding, normL2, recipA, sqrtA, transpose, (!), (!*!), (!+!), (!-!), (!/!), (!><!), (*.), (+.), (-.), (.+), (.-), (<!))
 import Data.Massiv.Array qualified as A (map)

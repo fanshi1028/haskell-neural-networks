@@ -18,9 +18,10 @@
 --   $ ./Main
 
 import Data.Bifunctor (Bifunctor (first))
+import Data.Foldable (traverse_)
 import Data.Massiv.Array (Comp (ParN), Ix2 (Ix2), Load (makeArray), Sz (Sz1, Sz2), U, append', applyStencil, compute, defRowMajor, dropWindow, expandOuter, makeSplitSeedArray, makeStencil, negateA, noPadding, toList, uniformRangeArray, (!+!))
 import Graphics.Rendering.Chart.Backend.Diagrams (toFile)
-import Graphics.Rendering.Chart.Easy (Default (def), blue, layout_title, opaque, orange, plot, points, setColors, (.=))
+import Graphics.Rendering.Chart.Easy (Default (def), blue, layout_title, line, opaque, orange, plot, points, setColors, (.=))
 import NeuralNetwork
   ( Activation (Relu, Sigmoid),
     Mode (TrainMode),
@@ -100,6 +101,12 @@ drawPoints name (Train inputs tgts) = do
     plot $ points "1" ps1
     plot $ points "2" ps2
 
+drawTrainingLoss :: String -> [(String, [[(Int, Double)]])] -> IO ()
+drawTrainingLoss name trainingLossData =
+  toFile def name $ do
+    layout_title .= "Training Loss"
+    traverse_ (\(name', lossData) -> plot $ line name' lossData) trainingLossData
+
 experiment1 :: (RandomGen g) => g -> IO g
 experiment1 g = do
   trainSet <- makeCircles 200 0.6 0.1
@@ -121,6 +128,8 @@ experiment1 g = do
 
   putStrLn $ printf "Training accuracy (Adam) %.1f" (netA `accuracy` trainSet)
   putStrLn $ printf "Validation accuracy (Adam) %.1f\n" (netA `accuracy` testSet)
+
+  drawTrainingLoss "circle_training_loss.svg" [("Gradient Descent", [trainingLossData]), ("Adam", [trainingLossDataA])]
 
   pure g
 
@@ -154,6 +163,13 @@ experiment2 g = do
 
   putStrLn $ printf "Training accuracy %.1f" (net2' `accuracy` trainSet)
   putStrLn $ printf "Validation accuracy %.1f\n" (net2' `accuracy` testSet)
+
+  drawTrainingLoss
+    "spiral_training_loss.svg"
+    [ ("1 hidden layer, 128 neurons (513 parameters)", [trainingLossData0]),
+      ("1 hidden layer, 512 neurons (2049 parameters)", [trainingLossData1]),
+      ("3 hidden layers, 40, 25, and 10 neurons (1416 parameters)", [trainingLossData2])
+    ]
 
   pure g'''
 
