@@ -86,8 +86,8 @@ pass ::
   -- | Data set
   RunNet s Double ->
   -- | NN computation from forward pass and weights gradients
-  (Matrix U Double, (Matrix U Double, [Gradients Double]))
-pass net run = _pass net $ case run of
+  ((Matrix U Double, Matrix U Double), [Gradients Double])
+pass net run = snd . _pass net $ case run of
   Train x _ -> x
   Infer x -> x
   where
@@ -97,19 +97,19 @@ pass net run = _pass net $ case run of
           loss = case run of
             Train _ target -> prediction' !-! target
             Infer _ -> undefined -- HACK
-       in (loss, (prediction', []))
+       in (loss, ((prediction', loss), []))
     _pass (Layer w b sact : layers) inp =
       let Sz2 _ inpC = size inp
           lin = (w !><! inp) !+! (compute $ expandWithin Dim1 (Sz1 inpC) (\v _ -> v) (compute @U $ b <! 0))
           y = compute $ getActivation sact lin
-          (dZ, (prediction', gradients)) = _pass layers y
+          (dZ, (predictionAndLoss, gradients)) = _pass layers y
           dY = getActivation' sact lin $ dZ
           dY' = compute dY
           dW = compute $ A.map (/ fromIntegral inpC) $ dY' !><! compute (transpose inp)
           Sz2 _ dYC = size dY
           dB = compute $ applyStencil noPadding (avgStencil $ Sz2 1 dYC) dY
           dX = compute (transpose w) !><! dY'
-       in (dX, (prediction', Gradients dW dB : gradients))
+       in (dX, (predictionAndLoss, Gradients dW dB : gradients))
 
 -- | Gradient descent optimization
 optimize ::
@@ -121,13 +121,16 @@ optimize ::
   NeuralNetwork Double ->
   -- | Dataset
   RunNet TrainMode Double ->
-  -- | Updated neural network
-  (NeuralNetwork Double, [(Int, Double)])
-optimize lr iterN net runNet = second ($ []) . flip para iterN $ \case
+  -- | Updated neural network, training accuracy + training loss data
+  (NeuralNetwork Double, [(Int, (Double, Double))])
+optimize lr iterN net runNet@(Train _ tgt) = second ($ []) . flip para iterN $ \case
   Nothing -> (net, id)
-  Just (epoch, (net', appendTrainingLossData)) -> (zipWith f net' dNet, appendTrainingLossData . ((fromIntegral epoch, loss) :))
+  Just (epoch, (net', appendTrainingAccuracyAndLossData)) ->
+    ( zipWith f net' dNet,
+      appendTrainingAccuracyAndLossData . ((fromIntegral epoch, (inferBinary' predictions `accuracy'` tgt, normL2 loss)) :)
+    )
     where
-      (normL2 -> loss, (_, dNet)) = pass net' runNet
+      ((predictions, loss), dNet) = pass net' runNet
       f (Layer w b act) (Gradients dW dB) = Layer (w !-! lr *. dW) (b !-! lr *. dB) act
 
 data AdamParameters = AdamParameters
@@ -159,21 +162,21 @@ optimizeAdam ::
   NeuralNetwork Double ->
   -- | Dataset
   RunNet TrainMode Double ->
-  (NeuralNetwork Double, [(Int, Double)])
-optimizeAdam p iterN w0 dataSet = (w, trainingLossData)
+  (NeuralNetwork Double, [(Int, (Double, Double))])
+optimizeAdam p iterN w0 dataSet = (w, trainingAccuracyAndLossData)
   where
     s0 = map zf w0
     v0 = map zf w0
     zf (Layer a b _) = (zerosLike a, zerosLike b)
     zerosLike m = makeArray (ParN 4) (size m) $ \_ -> 0
-    ((w, _, _), trainingLossData) = _adam p iterN (w0, s0, v0) dataSet
+    ((w, _, _), trainingAccuracyAndLossData) = _adam p iterN (w0, s0, v0) dataSet
 
 _adam ::
   AdamParameters ->
   Natural ->
   ([Layer Double], [(Matrix U Double, Matrix U Double)], [(Matrix U Double, Matrix U Double)]) ->
   RunNet TrainMode Double ->
-  (([Layer Double], [(Matrix U Double, Matrix U Double)], [(Matrix U Double, Matrix U Double)]), [(Int, Double)])
+  (([Layer Double], [(Matrix U Double, Matrix U Double)], [(Matrix U Double, Matrix U Double)]), [(Int, (Double, Double))])
 _adam
   AdamParameters
     { _lr = lr,
@@ -183,11 +186,11 @@ _adam
     }
   iterN
   (w0, s0, v0)
-  dataSet = second ($ []) . flip para iterN $ \case
+  dataSet@(Train _ tgts) = second ($ []) . flip para iterN $ \case
     Nothing -> ((w0, s0, v0), id)
-    Just (epoch, ((w, s, v), appendTrainingLoss)) -> ((wN, sN, vN), appendTrainingLoss . ((fromIntegral epoch, normL2 loss) :))
+    Just (epoch, ((w, s, v), appendTrainingAccuracyAndLossData)) -> ((wN, sN, vN), appendTrainingAccuracyAndLossData . ((fromIntegral epoch, (inferBinary' predictions `accuracy'` tgts, normL2 loss)) :))
       where
-        (loss, (_, gradients)) = pass w dataSet
+        ((predictions, loss), gradients) = pass w dataSet
 
         sN = zipWith f2 s gradients
         vN = zipWith f3 v gradients
@@ -235,9 +238,25 @@ genNetwork g (NeuralNetworkConfig nStart l) =
          in (Layer w b activation : layers, g'')
 
 -- | Perform a binary classification
+inferBinary' :: Matrix U Double -> Matrix U Double
+inferBinary' predictions = compute $ A.map (\a -> if a < 0.5 then 0 else 1) predictions
+
+-- | Perform a binary classification
 inferBinary ::
   NeuralNetwork Double -> Matrix U Double -> Matrix U Double
-inferBinary net dta = compute $ A.map (\a -> if a < 0.5 then 0 else 1) . fst . snd . pass net $ Infer dta
+inferBinary net dta = inferBinary' . fst . fst . pass net $ Infer dta
+
+-- | Binary classification accuracy in percent
+accuracy' ::
+  -- | Predicitons
+  Matrix U Double ->
+  -- | Targets
+  Matrix U Double ->
+  Double
+accuracy' preditions tgts = 100 * (1 - (avg ! (Ix2 0 0)))
+  where
+    a = absA $ tgts !-! preditions
+    avg = compute @U $ applyStencil noPadding (avgStencil $ size a) a
 
 -- | Binary classification accuracy in percent
 accuracy ::
@@ -246,7 +265,4 @@ accuracy ::
   -- | Dataset
   RunNet TrainMode Double ->
   Double
-accuracy net (Train dta tgt) = 100 * (1 - (avg ! (Ix2 0 0)))
-  where
-    a = absA $ tgt !-! net `inferBinary` dta
-    avg = compute @U $ applyStencil noPadding (avgStencil $ size a) a
+accuracy net (Train dta tgts) = accuracy' (net `inferBinary` dta) tgts

@@ -17,7 +17,7 @@
 --   $ stack --resolver lts-10.6 --install-ghc ghc --package hmatrix-0.18.2.0 --package hmatrix-morpheus-0.1.1.2 -- -O2 Main.hs
 --   $ ./Main
 
-import Data.Bifunctor (Bifunctor (first))
+import Data.Bifunctor (Bifunctor (first, second))
 import Data.Foldable (traverse_)
 import Data.Massiv.Array (Comp (ParN), Ix2 (Ix2), Load (makeArray), Sz (Sz1, Sz2), U, append', applyStencil, compute, defRowMajor, dropWindow, expandOuter, makeSplitSeedArray, makeStencil, negateA, noPadding, toList, uniformRangeArray, (!+!))
 import Graphics.Rendering.Chart.Backend.Diagrams (toFile)
@@ -129,7 +129,13 @@ experiment1 g = do
   putStrLn $ printf "Training accuracy (Adam) %.1f" (netA `accuracy` trainSet)
   putStrLn $ printf "Validation accuracy (Adam) %.1f\n" (netA `accuracy` testSet)
 
-  drawTrainingLoss "circle_training_loss.svg" [("Gradient Descent", [trainingLossData]), ("Adam", [trainingLossDataA])]
+  drawTrainingLoss
+    "circle_training_loss.svg"
+    [ ("Gradient Descent Training Accuracy", [second fst <$> trainingLossData]),
+      ("Gradient Descent Training Loss", [second snd <$> trainingLossData]),
+      ("Adam Training Accuracy", [second fst <$> trainingLossDataA]),
+      ("Adam Training Loss", [second snd <$> trainingLossDataA])
+    ]
 
   pure g'
 
@@ -166,9 +172,12 @@ experiment2 g = do
 
   drawTrainingLoss
     "spiral_training_loss.svg"
-    [ ("1 hidden layer, 128 neurons (513 parameters)", [trainingLossData0]),
-      ("1 hidden layer, 512 neurons (2049 parameters)", [trainingLossData1]),
-      ("3 hidden layers, 40, 25, and 10 neurons (1416 parameters)", [trainingLossData2])
+    [ ("1 hidden layer, 128 neurons (513 parameters) Training Accuracy", [second fst <$> trainingLossData0]),
+      ("1 hidden layer, 128 neurons (513 parameters) Training Loss", [second snd <$> trainingLossData0]),
+      ("1 hidden layer, 512 neurons (2049 parameters) Training Accuracy", [second fst <$> trainingLossData1]),
+      ("1 hidden layer, 512 neurons (2049 parameters) Training Loss", [second snd <$> trainingLossData1]),
+      ("3 hidden layers, 40, 25, and 10 neurons (1416 parameters) Training Accuracy", [second fst <$> trainingLossData2]),
+      ("3 hidden layers, 40, 25, and 10 neurons (1416 parameters) Training Loss", [second snd <$> trainingLossData2])
     ]
 
   pure g'''
