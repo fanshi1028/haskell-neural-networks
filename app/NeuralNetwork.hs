@@ -33,13 +33,11 @@ import Data.Functor.Foldable (Recursive (para))
 import Data.List.NonEmpty as NE (NonEmpty ((:|)))
 import Data.Massiv.Array (Comp (ParN), Dimension (Dim1), Ix2 (Ix2), Load (makeArray), Matrix, NumericFloat, Size (size), Sz (Sz1, Sz2), U (U), Unbox, absA, applyStencil, avgStencil, compute, computeAs, defRowMajor, expA, expandWithin, extract', makeSplitSeedArray, negateA, noPadding, normL2, recipA, sqrtA, transpose, (!), (!*!), (!+!), (!-!), (!/!), (!><!), (*.), (+.), (-.), (.+), (.-), (<!))
 import Data.Massiv.Array qualified as A (map)
-import Data.Massiv.Array.Numeric ()
 import GHC.Natural (Natural)
 import Statistics.Distribution (ContGen (genContVar))
 import Statistics.Distribution.Normal (standard)
 import System.Random (RandomGen (split))
 import System.Random.Stateful (runStateGen)
-import Data.Maybe (fromJust)
 
 -- Activation function:
 data Activation = Relu | Sigmoid | Tanh | Id deriving (Show)
@@ -88,7 +86,7 @@ pass ::
   -- | Data set
   RunNet s Double ->
   -- | NN computation from forward pass and weights gradients
-  ((Maybe (Matrix U Double)), (Matrix U Double, [Gradients Double]))
+  (Matrix U Double, (Matrix U Double, [Gradients Double]))
 pass net run = _pass net $ case run of
   Train x _ -> x
   Infer x -> x
@@ -96,25 +94,22 @@ pass net run = _pass net $ case run of
     _pass [] prediction' =
       let -- Gradient of cross-entropy loss
           -- after sigmoid activation.
-          mLoss = case run of
-            Train _ target -> Just $ prediction' !-! target
-            Infer _ -> Nothing
-       in (mLoss, (prediction', []))
+          loss = case run of
+            Train _ target -> prediction' !-! target
+            Infer _ -> undefined -- HACK
+       in (loss, (prediction', []))
     _pass (Layer w b sact : layers) inp =
       let Sz2 _ inpC = size inp
           lin = (w !><! inp) !+! (compute $ expandWithin Dim1 (Sz1 inpC) (\v _ -> v) (compute @U $ b <! 0))
           y = compute $ getActivation sact lin
-          (mDZ, (prediction', gradients)) = _pass layers y
-       in case mDZ of
-            Nothing -> (Nothing, (prediction', []))
-            Just dZ -> (Just dX, (prediction', Gradients dW dB : gradients))
-              where
-                dY = getActivation' sact lin $ dZ
-                dY' = compute dY
-                dW = compute $ A.map (/ fromIntegral inpC) $ dY' !><! compute (transpose inp)
-                Sz2 _ dYC = size dY
-                dB = compute $ applyStencil noPadding (avgStencil $ Sz2 1 dYC) dY
-                dX = compute (transpose w) !><! dY'
+          (dZ, (prediction', gradients)) = _pass layers y
+          dY = getActivation' sact lin $ dZ
+          dY' = compute dY
+          dW = compute $ A.map (/ fromIntegral inpC) $ dY' !><! compute (transpose inp)
+          Sz2 _ dYC = size dY
+          dB = compute $ applyStencil noPadding (avgStencil $ Sz2 1 dYC) dY
+          dX = compute (transpose w) !><! dY'
+       in (dX, (prediction', Gradients dW dB : gradients))
 
 -- | Gradient descent optimization
 optimize ::
@@ -132,7 +127,7 @@ optimize lr iterN net runNet = second ($ []) . flip para iterN $ \case
   Nothing -> (net, id)
   Just (epoch, (net', appendTrainingLossData)) -> (zipWith f net' dNet, appendTrainingLossData . ((fromIntegral epoch, loss) :))
     where
-      (normL2 . fromJust -> loss, (_ , dNet)) = pass net' runNet
+      (normL2 -> loss, (_, dNet)) = pass net' runNet
       f (Layer w b act) (Gradients dW dB) = Layer (w !-! lr *. dW) (b !-! lr *. dB) act
 
 data AdamParameters = AdamParameters
@@ -190,7 +185,7 @@ _adam
   (w0, s0, v0)
   dataSet = second ($ []) . flip para iterN $ \case
     Nothing -> ((w0, s0, v0), id)
-    Just (epoch, ((w, s, v), appendTrainingLoss)) -> ((wN, sN, vN), appendTrainingLoss . ((fromIntegral epoch, normL2 $ fromJust loss) :))
+    Just (epoch, ((w, s, v), appendTrainingLoss)) -> ((wN, sN, vN), appendTrainingLoss . ((fromIntegral epoch, normL2 loss) :))
       where
         (loss, (_, gradients)) = pass w dataSet
 
