@@ -22,7 +22,7 @@ import Data.Massiv.Array (Comp (ParN), Ix2 (Ix2), Load (makeArray), Sz (Sz1, Sz2
 import Graphics.Rendering.Chart.Backend.Diagrams (toFile)
 import Graphics.Rendering.Chart.Easy (Default (def), blue, layout_title, opaque, orange, plot, points, setColors, (.=))
 import NeuralNetwork
-  ( Activation (Id, Relu, Sigmoid),
+  ( Activation (Relu, Sigmoid),
     Mode (TrainMode),
     NeuralNetworkConfig (NeuralNetworkConfig),
     RunNet (Train),
