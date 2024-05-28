@@ -192,44 +192,42 @@ _adam
   (w0, s0, v0)
   dataSet = flip cata iterN $ \case
     Nothing -> (w0, s0, v0)
-    Just r -> go r
+    Just (w, s, v) -> (wN, sN, vN)
       where
-        go (w, s, v) = (wN, sN, vN)
-          where
-            (_, gradients) = pass w dataSet
+        (_, gradients) = pass w dataSet
 
-            sN = zipWith f2 s gradients
-            vN = zipWith f3 v gradients
-            wN = zipWith3 f w vN sN
+        sN = zipWith f2 s gradients
+        vN = zipWith f3 v gradients
+        wN = zipWith3 f w vN sN
 
-            f ::
-              Layer Double ->
-              (Matrix U Double, Matrix U Double) ->
-              (Matrix U Double, Matrix U Double) ->
-              Layer Double
-            f (Layer w_ b_ sf) (vW, vB) (sW, sB) =
-              Layer
-                (w_ !-! (compute $ lr *. vW !/! ((sqrtA sW) .+ epsilon)))
-                (b_ !-! (compute $ lr *. vB !/! ((sqrtA sB) .+ epsilon)))
-                sf
+        f ::
+          Layer Double ->
+          (Matrix U Double, Matrix U Double) ->
+          (Matrix U Double, Matrix U Double) ->
+          Layer Double
+        f (Layer w_ b_ sf) (vW, vB) (sW, sB) =
+          Layer
+            (w_ !-! (compute $ lr *. vW !/! ((sqrtA sW) .+ epsilon)))
+            (b_ !-! (compute $ lr *. vB !/! ((sqrtA sB) .+ epsilon)))
+            sf
 
-            f2 ::
-              (Matrix U Double, Matrix U Double) ->
-              Gradients Double ->
-              (Matrix U Double, Matrix U Double)
-            f2 (sW, sB) (Gradients dW dB) =
-              ( beta2 *. sW !+! (1 - beta2) *. (dW !*! dW),
-                beta2 *. sB !+! (1 - beta2) *. (dB !*! dB)
-              )
+        f2 ::
+          (Matrix U Double, Matrix U Double) ->
+          Gradients Double ->
+          (Matrix U Double, Matrix U Double)
+        f2 (sW, sB) (Gradients dW dB) =
+          ( beta2 *. sW !+! (1 - beta2) *. (dW !*! dW),
+            beta2 *. sB !+! (1 - beta2) *. (dB !*! dB)
+          )
 
-            f3 ::
-              (Matrix U Double, Matrix U Double) ->
-              Gradients Double ->
-              (Matrix U Double, Matrix U Double)
-            f3 (vW, vB) (Gradients dW dB) =
-              ( beta1 *. vW !+! (1 - beta1) *. dW,
-                beta1 *. vB !+! (1 - beta1) *. dB
-              )
+        f3 ::
+          (Matrix U Double, Matrix U Double) ->
+          Gradients Double ->
+          (Matrix U Double, Matrix U Double)
+        f3 (vW, vB) (Gradients dW dB) =
+          ( beta1 *. vW !+! (1 - beta1) *. dW,
+            beta1 *. vB !+! (1 - beta1) *. dB
+          )
 
 -- | Generate a neural network with random weights
 genNetwork :: (RandomGen g) => g -> NeuralNetworkConfig -> (NeuralNetwork Double, g)
