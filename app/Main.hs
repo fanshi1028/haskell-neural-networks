@@ -114,7 +114,7 @@ experiment1 g = do
 
   drawPoints "train_circle.svg" trainSet
 
-  let (net, _) = genNetwork g $ NeuralNetworkConfig 2 [(128, Relu), (1, Sigmoid)]
+  let (net, g') = genNetwork g $ NeuralNetworkConfig 2 [(128, Relu), (1, Sigmoid)]
       epochs = 1000
       lr = 0.001 -- Learning rate
       (net', trainingLossData) = optimize lr epochs net trainSet
@@ -131,7 +131,7 @@ experiment1 g = do
 
   drawTrainingLoss "circle_training_loss.svg" [("Gradient Descent", [trainingLossData]), ("Adam", [trainingLossDataA])]
 
-  pure g
+  pure g'
 
 experiment2 :: (RandomGen g) => g -> IO g
 experiment2 g = do
