@@ -39,6 +39,7 @@ import Statistics.Distribution (ContGen (genContVar))
 import Statistics.Distribution.Normal (standard)
 import System.Random (RandomGen (split))
 import System.Random.Stateful (runStateGen)
+import Data.Maybe (fromJust)
 
 -- Activation function:
 data Activation = Relu | Sigmoid | Tanh | Id deriving (Show)
@@ -87,8 +88,8 @@ pass ::
   -- | Data set
   RunNet s Double ->
   -- | NN computation from forward pass and weights gradients
-  (Matrix U Double, [Gradients Double])
-pass net run = snd . _pass net $ case run of
+  ((Maybe (Matrix U Double)), (Matrix U Double, [Gradients Double]))
+pass net run = _pass net $ case run of
   Train x _ -> x
   Infer x -> x
   where
@@ -131,7 +132,7 @@ optimize lr iterN net runNet = second ($ []) . flip para iterN $ \case
   Nothing -> (net, id)
   Just (epoch, (net', appendTrainingLossData)) -> (zipWith f net' dNet, appendTrainingLossData . ((fromIntegral epoch, loss) :))
     where
-      (normL2 -> loss, dNet) = pass net' runNet
+      (normL2 . fromJust -> loss, (_ , dNet)) = pass net' runNet
       f (Layer w b act) (Gradients dW dB) = Layer (w !-! lr *. dW) (b !-! lr *. dB) act
 
 data AdamParameters = AdamParameters
@@ -189,9 +190,9 @@ _adam
   (w0, s0, v0)
   dataSet = second ($ []) . flip para iterN $ \case
     Nothing -> ((w0, s0, v0), id)
-    Just (epoch, ((w, s, v), appendTrainingLoss)) -> ((wN, sN, vN), appendTrainingLoss . ((fromIntegral epoch, normL2 loss) :))
+    Just (epoch, ((w, s, v), appendTrainingLoss)) -> ((wN, sN, vN), appendTrainingLoss . ((fromIntegral epoch, normL2 $ fromJust loss) :))
       where
-        (loss, gradients) = pass w dataSet
+        (loss, (_, gradients)) = pass w dataSet
 
         sN = zipWith f2 s gradients
         vN = zipWith f3 v gradients
@@ -241,7 +242,7 @@ genNetwork g (NeuralNetworkConfig nStart l) =
 -- | Perform a binary classification
 inferBinary ::
   NeuralNetwork Double -> Matrix U Double -> Matrix U Double
-inferBinary net dta = compute $ A.map (\a -> if a < 0.5 then 0 else 1) . fst . pass net $ Infer dta
+inferBinary net dta = compute $ A.map (\a -> if a < 0.5 then 0 else 1) . fst . snd . pass net $ Infer dta
 
 -- | Binary classification accuracy in percent
 accuracy ::
