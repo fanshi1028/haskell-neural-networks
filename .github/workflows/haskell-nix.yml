@@ -56,5 +56,5 @@ jobs:
         if: ${{!contains(matrix.attr, 'shell') && contains(matrix.attr, 'linux')}}
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ inputs.exe }}-data-visualizations
-          path: ./*.svg
+          name: data-visualizations
+          path: ${{ inputs.working-directory }}/*.svg
