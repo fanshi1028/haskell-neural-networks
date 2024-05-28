@@ -163,21 +163,21 @@ optimizeAdam ::
   NeuralNetwork Double ->
   -- | Dataset
   RunNet TrainMode Double ->
-  NeuralNetwork Double
-optimizeAdam p iterN w0 dataSet = w
+  (NeuralNetwork Double, [(Int, Double)])
+optimizeAdam p iterN w0 dataSet = (w, trainingLossData)
   where
     s0 = map zf w0
     v0 = map zf w0
     zf (Layer a b _) = (zerosLike a, zerosLike b)
     zerosLike m = makeArray (ParN 4) (size m) $ \_ -> 0
-    (w, _, _) = _adam p iterN (w0, s0, v0) dataSet
+    ((w, _, _), trainingLossData) = _adam p iterN (w0, s0, v0) dataSet
 
 _adam ::
   AdamParameters ->
   Natural ->
   ([Layer Double], [(Matrix U Double, Matrix U Double)], [(Matrix U Double, Matrix U Double)]) ->
   RunNet TrainMode Double ->
-  ([Layer Double], [(Matrix U Double, Matrix U Double)], [(Matrix U Double, Matrix U Double)])
+  (([Layer Double], [(Matrix U Double, Matrix U Double)], [(Matrix U Double, Matrix U Double)]), [(Int, Double)])
 _adam
   AdamParameters
     { _lr = lr,
@@ -187,11 +187,11 @@ _adam
     }
   iterN
   (w0, s0, v0)
-  dataSet = flip cata iterN $ \case
-    Nothing -> (w0, s0, v0)
-    Just (w, s, v) -> (wN, sN, vN)
+  dataSet = second ($ []) . flip para iterN $ \case
+    Nothing -> ((w0, s0, v0), id)
+    Just (epoch, ((w, s, v), appendTrainingLoss)) -> ((wN, sN, vN), appendTrainingLoss . ((fromIntegral epoch, normL2 loss) :))
       where
-        (_, gradients) = pass w dataSet
+        (loss, gradients) = pass w dataSet
 
         sN = zipWith f2 s gradients
         vN = zipWith f3 v gradients

@@ -110,8 +110,8 @@ experiment1 g = do
   let (net, _) = genNetwork g $ NeuralNetworkConfig 2 [(128, Relu), (1, Sigmoid)]
       epochs = 1000
       lr = 0.001 -- Learning rate
-      netA = optimizeAdam adamParams epochs net trainSet
       (net', trainingLossData) = optimize lr epochs net trainSet
+      (netA, trainingLossDataA) = optimizeAdam adamParams epochs net trainSet
 
   putStrLn $ printf "Circles problem, 1 hidden layer of 128 neurons, %d epochs" epochs
   putStrLn "---"
@@ -136,21 +136,21 @@ experiment2 g = do
   putStrLn "---"
   putStrLn "1 hidden layer, 128 neurons (513 parameters)"
   let (net0, g') = genNetwork g $ NeuralNetworkConfig 2 [(128, Relu), (1, Sigmoid)]
-      net0' = optimizeAdam adamParams epochs net0 trainSet
+      (net0', trainingLossData0) = optimizeAdam adamParams epochs net0 trainSet
 
   putStrLn $ printf "Training accuracy %.1f" (net0' `accuracy` trainSet)
   putStrLn $ printf "Validation accuracy %.1f\n" (net0' `accuracy` testSet)
 
   putStrLn "1 hidden layer, 512 neurons (2049 parameters)"
   let (net1, g'') = genNetwork g' $ NeuralNetworkConfig 2 [(512, Relu), (1, Sigmoid)]
-  let net1' = optimizeAdam adamParams epochs net1 trainSet
+  let (net1', trainingLossData1) = optimizeAdam adamParams epochs net1 trainSet
 
   putStrLn $ printf "Training accuracy %.1f" (net1' `accuracy` trainSet)
   putStrLn $ printf "Validation accuracy %.1f\n" (net1' `accuracy` testSet)
 
   putStrLn "3 hidden layers, 40, 25, and 10 neurons (1416 parameters)"
   let (net2, g''') = genNetwork g'' $ NeuralNetworkConfig 2 [(40, Relu), (25, Relu), (10, Relu), (1, Sigmoid)]
-  let net2' = optimizeAdam adamParams epochs net2 trainSet
+  let (net2', trainingLossData2) = optimizeAdam adamParams epochs net2 trainSet
 
   putStrLn $ printf "Training accuracy %.1f" (net2' `accuracy` trainSet)
   putStrLn $ printf "Validation accuracy %.1f\n" (net2' `accuracy` testSet)
