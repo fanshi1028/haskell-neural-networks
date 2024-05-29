@@ -31,7 +31,7 @@ import Data.Bifunctor (Bifunctor (second))
 import Data.Functor.Base (NonEmptyF (NonEmptyF))
 import Data.Functor.Foldable (Recursive (para))
 import Data.List.NonEmpty as NE (NonEmpty ((:|)))
-import Data.Massiv.Array (Comp (ParN), Dimension (Dim1), Ix2 (Ix2), Load (makeArray), Matrix, NumericFloat, Size (size), Sz (Sz1, Sz2), U (U), Unbox, absA, applyStencil, avgStencil, compute, computeAs, defRowMajor, expA, expandWithin, extract', makeSplitSeedArray, negateA, noPadding, normL2, recipA, sqrtA, transpose, (!), (!*!), (!+!), (!-!), (!/!), (!><!), (*.), (+.), (-.), (.+), (.-), (<!))
+import Data.Massiv.Array (Comp (Par, ParN), Dimension (Dim1), Ix2 (Ix2), Load (makeArray), Matrix, NumericFloat, Size (size), Sz (Sz1, Sz2), U (U), Unbox, Vector, absA, applyStencil, avgStencil, compute, computeAs, defRowMajor, expA, expandWithin, foldlInner, makeSplitSeedArray, makeVectorR, negateA, noPadding, normL2, recipA, sqrtA, sunfoldrExactN, transpose, (!), (!*!), (!+!), (!-!), (!/!), (!><!), (*.), (+.), (-.), (.+), (.-))
 import Data.Massiv.Array qualified as A (map)
 import GHC.Natural (Natural)
 import Statistics.Distribution (ContGen (genContVar))
@@ -43,8 +43,7 @@ import System.Random.Stateful (runStateGen)
 data Activation = Relu | Sigmoid | Tanh | Id deriving (Show)
 
 -- Neural network layer: weights, biases, and activation
-data Layer a
-  = Layer !(Matrix U a) !(Matrix U a) !Activation
+data Layer a = Layer !(Matrix U a) !(Vector U a) !Activation
   deriving (Show)
 
 -- \| Batchnorm1d (Vector a) (Vector a) (Vector a) (Vector a)
@@ -54,7 +53,7 @@ data NeuralNetworkConfig = NeuralNetworkConfig !Int ![(Int, Activation)]
 type NeuralNetwork a = [Layer a]
 
 -- | Weight and bias gradients
-data Gradients a = Gradients !(Matrix U a) !(Matrix U a)
+data Gradients a = Gradients !(Matrix U a) !(Vector U a)
 
 instance (Unbox e, Floating e) => NumericFloat U e
 
@@ -100,14 +99,13 @@ pass net run = snd . _pass net $ case run of
        in (loss, ((prediction', loss), []))
     _pass (Layer w b sact : layers) inp =
       let Sz2 _ inpC = size inp
-          lin = (w !><! inp) !+! (compute $ expandWithin Dim1 (Sz1 inpC) (\v _ -> v) (compute @U $ b <! 0))
+          lin = (w !><! inp) !+! (compute $ expandWithin Dim1 (Sz1 inpC) (\v _ -> v) b)
           y = compute $ getActivation sact lin
           (dZ, (predictionAndLoss, gradients)) = _pass layers y
           dY = getActivation' sact lin $ dZ
           dY' = compute dY
           dW = compute $ A.map (/ fromIntegral inpC) $ dY' !><! compute (transpose inp)
-          Sz2 _ dYC = size dY
-          dB = compute $ applyStencil noPadding (avgStencil $ Sz2 1 dYC) dY
+          dB = compute $ foldlInner (+) 0 dY
           dX = compute (transpose w) !><! dY'
        in (dX, (predictionAndLoss, Gradients dW dB : gradients))
 
@@ -174,9 +172,9 @@ optimizeAdam p iterN w0 dataSet = (w, trainingAccuracyAndLossData)
 _adam ::
   AdamParameters ->
   Natural ->
-  ([Layer Double], [(Matrix U Double, Matrix U Double)], [(Matrix U Double, Matrix U Double)]) ->
+  (NeuralNetwork Double, [(Matrix U Double, Vector U Double)], [(Matrix U Double, Vector U Double)]) ->
   RunNet TrainMode Double ->
-  (([Layer Double], [(Matrix U Double, Matrix U Double)], [(Matrix U Double, Matrix U Double)]), [(Int, (Double, Double))])
+  ((NeuralNetwork Double, [(Matrix U Double, Vector U Double)], [(Matrix U Double, Vector U Double)]), [(Int, (Double, Double))])
 _adam
   AdamParameters
     { _lr = lr,
@@ -198,8 +196,8 @@ _adam
 
         f ::
           Layer Double ->
-          (Matrix U Double, Matrix U Double) ->
-          (Matrix U Double, Matrix U Double) ->
+          (Matrix U Double, Vector U Double) ->
+          (Matrix U Double, Vector U Double) ->
           Layer Double
         f (Layer w_ b_ sf) (vW, vB) (sW, sB) =
           Layer
@@ -208,18 +206,18 @@ _adam
             sf
 
         f2 ::
-          (Matrix U Double, Matrix U Double) ->
+          (Matrix U Double, Vector U Double) ->
           Gradients Double ->
-          (Matrix U Double, Matrix U Double)
+          (Matrix U Double, Vector U Double)
         f2 (sW, sB) (Gradients dW dB) =
           ( beta2 *. sW !+! (1 - beta2) *. (dW !*! dW),
             beta2 *. sB !+! (1 - beta2) *. (dB !*! dB)
           )
 
         f3 ::
-          (Matrix U Double, Matrix U Double) ->
+          (Matrix U Double, Vector U Double) ->
           Gradients Double ->
-          (Matrix U Double, Matrix U Double)
+          (Matrix U Double, Vector U Double)
         f3 (vW, vB) (Gradients dW dB) =
           ( beta1 *. vW !+! (1 - beta1) *. dW,
             beta1 *. vB !+! (1 - beta1) *. dB
@@ -231,11 +229,10 @@ genNetwork g (NeuralNetworkConfig nStart l) =
   flip para ((nStart, undefined) :| l) $ \case
     NonEmptyF (nIn, _) mr -> case mr of
       Nothing -> ([], g)
-      Just ((nOut, activation) :| _, (layers, split -> (g', g''))) ->
-        let a = computeAs U $ makeSplitSeedArray defRowMajor g' split (ParN 4) (Sz2 nOut (nIn + 1)) $ \_ _ g''' -> runStateGen g''' (genContVar standard)
-            w = compute $ extract' (Ix2 0 0) (Sz2 nOut nIn) a
-            b = compute $ extract' (Ix2 0 (nIn - 1)) (Sz2 nOut 1) a
-         in (Layer w b activation : layers, g'')
+      Just ((nOut, activation) :| _, (layers, split -> (split -> (g1, g2), g3))) ->
+        let w = computeAs U $ makeSplitSeedArray defRowMajor g1 split (ParN 4) (Sz2 nOut nIn) $ \_ _ g' -> runStateGen g' (genContVar standard)
+            b = compute $ sunfoldrExactN (Sz1 nOut) (\g' -> runStateGen g' (genContVar standard)) g2
+         in (Layer w b activation : layers, g3)
 
 -- | Perform a binary classification
 inferBinary' :: Matrix U Double -> Matrix U Double
