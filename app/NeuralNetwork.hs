@@ -27,12 +27,13 @@ module NeuralNetwork
   )
 where
 
-import Data.Bifunctor (Bifunctor (second))
+import Data.Bifunctor (Bifunctor (first, second))
 import Data.Functor.Base (NonEmptyF (NonEmptyF))
 import Data.Functor.Foldable (Recursive (para))
 import Data.List.NonEmpty as NE (NonEmpty ((:|)))
-import Data.Massiv.Array (Comp (Par, ParN), Dimension (Dim1), Ix2 (Ix2), Load (makeArray), Matrix, NumericFloat, Size (size), Sz (Sz1, Sz2), U (U), Unbox, Vector, absA, applyStencil, avgStencil, compute, computeAs, defRowMajor, expA, expandWithin, foldlInner, makeSplitSeedArray, makeVectorR, negateA, noPadding, normL2, recipA, sqrtA, sunfoldrExactN, transpose, (!), (!*!), (!+!), (!-!), (!/!), (!><!), (*.), (+.), (-.), (.+), (.-))
+import Data.Massiv.Array (Comp (ParN), Dimension (Dim1), Ix2 (Ix2), Load (makeArray), Matrix, NumericFloat, Size (size), Sz (Sz1, Sz2), U (U), Unbox, Vector, absA, applyStencil, avgStencil, compute, computeAs, defRowMajor, expA, expandWithin, foldlInner, makeSplitSeedArray, negateA, noPadding, normL2, recipA, sqrtA, sunfoldrExactN, transpose, (!), (!*!), (!+!), (!-!), (!/!), (!><!), (*.), (+.), (-.), (.+), (.-))
 import Data.Massiv.Array qualified as A (map)
+import GHC.Float (double2Float)
 import GHC.Natural (Natural)
 import Statistics.Distribution (ContGen (genContVar))
 import Statistics.Distribution.Normal (standard)
@@ -58,7 +59,7 @@ data Gradients a = Gradients !(Matrix U a) !(Vector U a)
 instance (Unbox e, Floating e) => NumericFloat U e
 
 -- | Lookup activation function by a symbol
-getActivation :: Activation -> (Matrix U Double -> Matrix U Double)
+getActivation :: Activation -> (Matrix U Float -> Matrix U Float)
 getActivation = \case
   Id -> id
   Sigmoid -> \x -> recipA (1.0 +. expA (negateA x))
@@ -66,7 +67,7 @@ getActivation = \case
   Tanh -> \x -> 2 *. recipA (1 +. expA (negateA $ 2 *. x)) .- 1
 
 -- | Lookup activation function derivative by a symbol
-getActivation' :: Activation -> Matrix U Double -> (Matrix U Double -> Matrix U Double)
+getActivation' :: Activation -> Matrix U Float -> (Matrix U Float -> Matrix U Float)
 getActivation' Id _ = id
 getActivation' Sigmoid (getActivation Sigmoid -> z) = (z !*! (1 -. z) !*!)
 getActivation' Relu (compute . A.map (\z -> if z >= 0 then 1 else 0) -> z) = (z !*!)
@@ -81,11 +82,11 @@ data RunNet (mode :: Mode) r where
 -- | Both forward and backward neural network passes
 pass ::
   -- | `NeuralNetwork` `Layer`s: weights and activations
-  NeuralNetwork Double ->
+  NeuralNetwork Float ->
   -- | Data set
-  RunNet s Double ->
+  RunNet s Float ->
   -- | NN computation from forward pass and weights gradients
-  ((Matrix U Double, Matrix U Double), [Gradients Double])
+  ((Matrix U Float, Matrix U Float), [Gradients Float])
 pass net run = snd . _pass net $ case run of
   Train x _ -> x
   Infer x -> x
@@ -112,15 +113,15 @@ pass net run = snd . _pass net $ case run of
 -- | Gradient descent optimization
 optimize ::
   -- | Learning rate
-  Double ->
+  Float ->
   -- | No of iterations
   Natural ->
   -- | Neural network
-  NeuralNetwork Double ->
+  NeuralNetwork Float ->
   -- | Dataset
-  RunNet TrainMode Double ->
+  RunNet TrainMode Float ->
   -- | Updated neural network, training accuracy + training loss data
-  (NeuralNetwork Double, [(Int, (Double, Double))])
+  (NeuralNetwork Float, [(Int, (Float, Float))])
 optimize lr iterN net runNet@(Train _ tgt) = second ($ []) . flip para iterN $ \case
   Nothing -> (net, id)
   Just (epoch, (net', appendTrainingAccuracyAndLossData)) ->
@@ -132,10 +133,10 @@ optimize lr iterN net runNet@(Train _ tgt) = second ($ []) . flip para iterN $ \
       f (Layer w b act) (Gradients dW dB) = Layer (w !-! lr *. dW) (b !-! lr *. dB) act
 
 data AdamParameters = AdamParameters
-  { _beta1 :: !Double,
-    _beta2 :: !Double,
-    _epsilon :: !Double,
-    _lr :: !Double
+  { _beta1 :: !Float,
+    _beta2 :: !Float,
+    _epsilon :: !Float,
+    _lr :: !Float
   }
 
 -- | Adam optimizer parameters
@@ -157,10 +158,10 @@ optimizeAdam ::
   -- | No of iterations
   Natural ->
   -- | Neural network layers
-  NeuralNetwork Double ->
+  NeuralNetwork Float ->
   -- | Dataset
-  RunNet TrainMode Double ->
-  (NeuralNetwork Double, [(Int, (Double, Double))])
+  RunNet TrainMode Float ->
+  (NeuralNetwork Float, [(Int, (Float, Float))])
 optimizeAdam p iterN w0 dataSet = (w, trainingAccuracyAndLossData)
   where
     s0 = map zf w0
@@ -172,9 +173,9 @@ optimizeAdam p iterN w0 dataSet = (w, trainingAccuracyAndLossData)
 _adam ::
   AdamParameters ->
   Natural ->
-  (NeuralNetwork Double, [(Matrix U Double, Vector U Double)], [(Matrix U Double, Vector U Double)]) ->
-  RunNet TrainMode Double ->
-  ((NeuralNetwork Double, [(Matrix U Double, Vector U Double)], [(Matrix U Double, Vector U Double)]), [(Int, (Double, Double))])
+  (NeuralNetwork Float, [(Matrix U Float, Vector U Float)], [(Matrix U Float, Vector U Float)]) ->
+  RunNet TrainMode Float ->
+  ((NeuralNetwork Float, [(Matrix U Float, Vector U Float)], [(Matrix U Float, Vector U Float)]), [(Int, (Float, Float))])
 _adam
   AdamParameters
     { _lr = lr,
@@ -195,10 +196,10 @@ _adam
         wN = zipWith3 f w vN sN
 
         f ::
-          Layer Double ->
-          (Matrix U Double, Vector U Double) ->
-          (Matrix U Double, Vector U Double) ->
-          Layer Double
+          Layer Float ->
+          (Matrix U Float, Vector U Float) ->
+          (Matrix U Float, Vector U Float) ->
+          Layer Float
         f (Layer w_ b_ sf) (vW, vB) (sW, sB) =
           Layer
             (w_ !-! (compute $ lr *. vW !/! ((sqrtA sW) .+ epsilon)))
@@ -206,50 +207,50 @@ _adam
             sf
 
         f2 ::
-          (Matrix U Double, Vector U Double) ->
-          Gradients Double ->
-          (Matrix U Double, Vector U Double)
+          (Matrix U Float, Vector U Float) ->
+          Gradients Float ->
+          (Matrix U Float, Vector U Float)
         f2 (sW, sB) (Gradients dW dB) =
           ( beta2 *. sW !+! (1 - beta2) *. (dW !*! dW),
             beta2 *. sB !+! (1 - beta2) *. (dB !*! dB)
           )
 
         f3 ::
-          (Matrix U Double, Vector U Double) ->
-          Gradients Double ->
-          (Matrix U Double, Vector U Double)
+          (Matrix U Float, Vector U Float) ->
+          Gradients Float ->
+          (Matrix U Float, Vector U Float)
         f3 (vW, vB) (Gradients dW dB) =
           ( beta1 *. vW !+! (1 - beta1) *. dW,
             beta1 *. vB !+! (1 - beta1) *. dB
           )
 
 -- | Generate a neural network with random weights
-genNetwork :: (RandomGen g) => g -> NeuralNetworkConfig -> (NeuralNetwork Double, g)
+genNetwork :: (RandomGen g) => g -> NeuralNetworkConfig -> (NeuralNetwork Float, g)
 genNetwork g (NeuralNetworkConfig nStart l) =
   flip para ((nStart, undefined) :| l) $ \case
     NonEmptyF (nIn, _) mr -> case mr of
       Nothing -> ([], g)
       Just ((nOut, activation) :| _, (layers, split -> (split -> (g1, g2), g3))) ->
-        let w = computeAs U $ makeSplitSeedArray defRowMajor g1 split (ParN 4) (Sz2 nOut nIn) $ \_ _ g' -> runStateGen g' (genContVar standard)
-            b = compute $ sunfoldrExactN (Sz1 nOut) (\g' -> runStateGen g' (genContVar standard)) g2
+        let w = computeAs U $ makeSplitSeedArray defRowMajor g1 split (ParN 4) (Sz2 nOut nIn) $ \_ _ g' -> first double2Float (runStateGen g' $ genContVar standard)
+            b = compute $ sunfoldrExactN (Sz1 nOut) (\g' -> first double2Float (runStateGen g' $ genContVar standard)) g2
          in (Layer w b activation : layers, g3)
 
 -- | Perform a binary classification
-inferBinary' :: Matrix U Double -> Matrix U Double
+inferBinary' :: Matrix U Float -> Matrix U Float
 inferBinary' predictions = compute $ A.map (\a -> if a < 0.5 then 0 else 1) predictions
 
 -- | Perform a binary classification
 inferBinary ::
-  NeuralNetwork Double -> Matrix U Double -> Matrix U Double
+  NeuralNetwork Float -> Matrix U Float -> Matrix U Float
 inferBinary net dta = inferBinary' . fst . fst . pass net $ Infer dta
 
 -- | Binary classification accuracy in percent
 accuracy' ::
   -- | Predicitons
-  Matrix U Double ->
+  Matrix U Float ->
   -- | Targets
-  Matrix U Double ->
-  Double
+  Matrix U Float ->
+  Float
 accuracy' preditions tgts = 100 * (1 - (avg ! (Ix2 0 0)))
   where
     a = absA $ tgts !-! preditions
@@ -258,8 +259,8 @@ accuracy' preditions tgts = 100 * (1 - (avg ! (Ix2 0 0)))
 -- | Binary classification accuracy in percent
 accuracy ::
   -- | Neural network
-  [Layer Double] ->
+  [Layer Float] ->
   -- | Dataset
-  RunNet TrainMode Double ->
-  Double
+  RunNet TrainMode Float ->
+  Float
 accuracy net (Train dta tgts) = accuracy' (net `inferBinary` dta) tgts

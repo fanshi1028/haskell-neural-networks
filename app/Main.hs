@@ -38,12 +38,13 @@ import Statistics.Distribution.Normal (standard)
 import System.Random (RandomGen (split), newStdGen)
 import System.Random.Stateful (runStateGen)
 import Text.Printf (printf)
+import GHC.Float (double2Float)
 
-genNoise :: (RandomGen g) => Double -> g -> (Double, g)
-genNoise noise g = first (noise *) . runStateGen g $ genContVar standard
+genNoise :: (RandomGen g) => Float -> g -> (Float, g)
+genNoise noise g = first ((noise *) . double2Float) . runStateGen g $ genContVar standard
 
 -- | Circles dataset
-makeCircles :: Int -> Double -> Double -> IO (RunNet TrainMode Double)
+makeCircles :: Int -> Float -> Float -> IO (RunNet TrainMode Float)
 makeCircles m factor noise = do
   (g, g') <- split <$> newStdGen
   let makeFeatures factor' size' =
@@ -64,7 +65,7 @@ makeCircles m factor noise = do
 -- | Spirals dataset.
 -- Note, produces twice more points than m.
 makeSpirals ::
-  Int -> Double -> IO (RunNet TrainMode Double)
+  Int -> Float -> IO (RunNet TrainMode Float)
 makeSpirals m noise = do
   (g, g') <- split <$> newStdGen
   let features =
@@ -82,7 +83,7 @@ makeSpirals m noise = do
       targets = makeArray (ParN 4) (Sz2 1 (2 * m)) $ \(Ix2 _ j) -> if j <= m then 0 else 1
   pure $ Train (features' !+! noises) targets
 
-drawPoints :: String -> RunNet TrainMode Double -> IO ()
+drawPoints :: String -> RunNet TrainMode Float -> IO ()
 drawPoints name (Train inputs tgts) = do
   let inputs' =
         toList . dropWindow $ applyStencil noPadding (makeStencil (Sz2 2 1) (Ix2 0 0) (\get -> (get $ Ix2 0 0, get $ Ix2 1 0))) inputs
@@ -101,7 +102,7 @@ drawPoints name (Train inputs tgts) = do
     plot $ points "1" ps1
     plot $ points "2" ps2
 
-drawTrainingLoss :: String -> [(String, [[(Int, Double)]])] -> IO ()
+drawTrainingLoss :: String -> [(String, [[(Int, Float)]])] -> IO ()
 drawTrainingLoss name trainingLossData =
   toFile def name $ do
     layout_title .= "Training Loss"
